@@ -1,40 +1,40 @@
 import {
   ATTR_SERVICE_NAME,
-  ATTR_SERVICE_VERSION
-} from '@opentelemetry/semantic-conventions'
+  ATTR_SERVICE_VERSION,
+} from '@opentelemetry/semantic-conventions';
 import {
   ATTR_APP_BUILD_ID,
   ATTR_DEPLOYMENT_ENVIRONMENT_NAME,
   ATTR_DEVICE_MANUFACTURER,
   ATTR_DEVICE_MODEL_NAME,
   ATTR_OS_NAME,
-  ATTR_OS_VERSION
-} from '@opentelemetry/semantic-conventions/incubating'
+  ATTR_OS_VERSION,
+} from '@opentelemetry/semantic-conventions/incubating';
 
 export interface Resource {
-  [ATTR_SERVICE_NAME]: string // 'service.name'
-  [ATTR_SERVICE_VERSION]: string // 'service.version'
-  [ATTR_OS_NAME]: string // 'os.name'
-  [ATTR_OS_VERSION]: string // 'os.version'
-  [ATTR_DEVICE_MANUFACTURER]: string // 'device.manufacturer'
-  [ATTR_DEVICE_MODEL_NAME]: string // 'device.model.name'
-  'device.type': string | number // custom — no OTel equivalent
-  [ATTR_APP_BUILD_ID]: string // 'app.build_id'
-  [ATTR_DEPLOYMENT_ENVIRONMENT_NAME]: string // 'deployment.environment.name'
+  [ATTR_SERVICE_NAME]: string; // 'service.name'
+  [ATTR_SERVICE_VERSION]: string; // 'service.version'
+  [ATTR_OS_NAME]: string; // 'os.name'
+  [ATTR_OS_VERSION]: string; // 'os.version'
+  [ATTR_DEVICE_MANUFACTURER]: string; // 'device.manufacturer'
+  [ATTR_DEVICE_MODEL_NAME]: string; // 'device.model.name'
+  'device.type': string | number; // custom — no OTel equivalent
+  [ATTR_APP_BUILD_ID]: string; // 'app.build_id'
+  [ATTR_DEPLOYMENT_ENVIRONMENT_NAME]: string; // 'deployment.environment.name'
 }
 
 // Populated at init time from device/app info passed in by the caller.
 // Immutable after creation — user identity is NOT stored here.
 export function buildResource(params: {
-  serviceName: string
-  serviceVersion: string
-  osName: string
-  osVersion: string
-  deviceBrand: string
-  deviceModel: string
-  deviceType: string | number
-  appBuild: string
-  environment: string
+  serviceName: string;
+  serviceVersion: string;
+  osName: string;
+  osVersion: string;
+  deviceBrand: string;
+  deviceModel: string;
+  deviceType: string | number;
+  appBuild: string;
+  environment: string;
 }): Readonly<Resource> {
   return Object.freeze({
     [ATTR_SERVICE_NAME]: params.serviceName,
@@ -45,6 +45,6 @@ export function buildResource(params: {
     [ATTR_DEVICE_MODEL_NAME]: params.deviceModel,
     'device.type': params.deviceType,
     [ATTR_APP_BUILD_ID]: params.appBuild,
-    [ATTR_DEPLOYMENT_ENVIRONMENT_NAME]: params.environment
-  })
+    [ATTR_DEPLOYMENT_ENVIRONMENT_NAME]: params.environment,
+  });
 }

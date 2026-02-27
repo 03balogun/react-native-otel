@@ -1,7 +1,7 @@
-import { Attributes, sanitizeAttributes } from './attributes'
-import { now } from './clock'
-import { spanContext } from '../context/span-context'
-import { LogExporter, LogRecord } from '../exporters/types'
+import { Attributes, sanitizeAttributes } from './attributes';
+import { now } from './clock';
+import { spanContext } from '../context/span-context';
+import { LogExporter, LogRecord } from '../exporters/types';
 
 export type LogSeverity =
   | 'TRACE'
@@ -9,49 +9,49 @@ export type LogSeverity =
   | 'INFO'
   | 'WARN'
   | 'ERROR'
-  | 'FATAL'
+  | 'FATAL';
 
 export class OtelLogger {
-  private exporter: LogExporter | undefined
+  private exporter: LogExporter | undefined;
 
   constructor(exporter?: LogExporter) {
-    this.exporter = exporter
+    this.exporter = exporter;
   }
 
   private emit(severity: LogSeverity, body: string, attrs?: Attributes): void {
-    const current = spanContext.current()
+    const current = spanContext.current();
     const record: LogRecord = {
       timestampMs: now(),
       severity,
       body,
       traceId: current?.traceId,
       spanId: current?.spanId,
-      attributes: attrs ? sanitizeAttributes(attrs) : {}
-    }
-    this.exporter?.export([record])
+      attributes: attrs ? sanitizeAttributes(attrs) : {},
+    };
+    this.exporter?.export([record]);
   }
 
   trace(body: string, attrs?: Attributes): void {
-    this.emit('TRACE', body, attrs)
+    this.emit('TRACE', body, attrs);
   }
 
   debug(body: string, attrs?: Attributes): void {
-    this.emit('DEBUG', body, attrs)
+    this.emit('DEBUG', body, attrs);
   }
 
   info(body: string, attrs?: Attributes): void {
-    this.emit('INFO', body, attrs)
+    this.emit('INFO', body, attrs);
   }
 
   warn(body: string, attrs?: Attributes): void {
-    this.emit('WARN', body, attrs)
+    this.emit('WARN', body, attrs);
   }
 
   error(body: string, attrs?: Attributes): void {
-    this.emit('ERROR', body, attrs)
+    this.emit('ERROR', body, attrs);
   }
 
   fatal(body: string, attrs?: Attributes): void {
-    this.emit('FATAL', body, attrs)
+    this.emit('FATAL', body, attrs);
   }
 }
