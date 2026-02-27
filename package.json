@@ -41,7 +41,11 @@
   "keywords": [
     "react-native",
     "ios",
-    "android"
+    "android",
+    "opentelemetry",
+    "otel",
+    "observability",
+    "tracing"
   ],
   "repository": {
     "type": "git",
