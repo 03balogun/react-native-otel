@@ -2,7 +2,7 @@
   "compilerOptions": {
     "rootDir": ".",
     "paths": {
-      "rn-otel": ["./src/index"]
+      "react-native-otel": ["./src/index"]
     },
     "allowUnreachableCode": false,
     "allowUnusedLabels": false,

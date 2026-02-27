@@ -127,7 +127,7 @@ export class OtlpHttpExporter implements SpanExporter {
           resource: { attributes: resourceAttrs },
           scopeSpans: [
             {
-              scope: { name: 'rn-otel', version: '0.1.0' },
+              scope: { name: 'react-native-otel', version: '0.1.0' },
               spans: spans.map(s => this.toOtlpSpan(s))
             }
           ]
@@ -254,7 +254,7 @@ export class OtlpHttpMetricExporter implements MetricExporter {
           resource: { attributes: resourceAttrs },
           scopeMetrics: [
             {
-              scope: { name: 'rn-otel', version: '0.1.0' },
+              scope: { name: 'react-native-otel', version: '0.1.0' },
               metrics: otlpMetrics
             }
           ]
@@ -347,7 +347,7 @@ export class OtlpHttpLogExporter implements LogExporter {
           resource: { attributes: resourceAttrs },
           scopeLogs: [
             {
-              scope: { name: 'rn-otel', version: '0.1.0' },
+              scope: { name: 'react-native-otel', version: '0.1.0' },
               logRecords: logs.map(log => ({
                 timeUnixNano: msToNano(log.timestampMs),
                 severityNumber: LOG_SEVERITY_NUMBER[log.severity] ?? 9,

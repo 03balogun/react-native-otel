@@ -1,5 +1,5 @@
 {
-  "name": "rn-otel",
+  "name": "react-native-otel",
   "version": "0.1.0",
   "description": "Lightweight OpenTelemetry SDK for React Native",
   "main": "./lib/module/index.js",
@@ -32,7 +32,7 @@
     "!**/.*"
   ],
   "scripts": {
-    "example": "yarn workspace rn-otel-example",
+    "example": "yarn workspace react-native-otel-example",
     "clean": "del-cli lib",
     "prepare": "bob build",
     "typecheck": "tsc",
@@ -45,14 +45,14 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/user/rn-otel.git"
+    "url": "git+https://github.com/user/react-native-otel.git"
   },
   "author": "Wahab Balogun <03balogun@gmail.com> (https://github.com)",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/user/rn-otel/issues"
+    "url": "https://github.com/user/react-native-otel/issues"
   },
-  "homepage": "https://github.com/user/rn-otel#readme",
+  "homepage": "https://github.com/user/react-native-otel#readme",
   "publishConfig": {
     "registry": "https://registry.npmjs.org/"
   },

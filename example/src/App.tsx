@@ -5,11 +5,11 @@ import {
   ConsoleSpanExporter,
   ConsoleMetricExporter,
   ConsoleLogExporter,
-} from 'rn-otel';
+} from 'react-native-otel';
 
 // Initialize otel at module scope before rendering
 otel.init({
-  serviceName: 'rn-otel-example',
+  serviceName: 'react-native-otel-example',
   serviceVersion: '0.1.0',
   exporter: new ConsoleSpanExporter(),
   metricExporter: new ConsoleMetricExporter(),
@@ -44,7 +44,7 @@ export default function App() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>rn-otel Example</Text>
+      <Text style={styles.title}>react-native-otel Example</Text>
       <Text style={styles.subtitle}>Check Metro console for span output</Text>
 
       <Text style={styles.counter}>Spans emitted: {spanCount}</Text>

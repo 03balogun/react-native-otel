@@ -1,4 +1,4 @@
-# rn-otel
+# react-native-otel
 
 A lightweight, zero-native-dependency OpenTelemetry-compatible SDK for React Native. Replaces Amplitude + Sentry (JS-side) + Firebase Performance with a single unified observability layer that emits standards-compliant OTLP signals.
 
@@ -85,8 +85,8 @@ A lightweight, zero-native-dependency OpenTelemetry-compatible SDK for React Nat
 ## Package Structure
 
 ```
-packages/rn-otel/
-├── package.json                    # name: "rn-otel"
+packages/react-native-otel/
+├── package.json                    # name: "react-native-otel"
 ├── tsconfig.json                   # extends root tsconfig
 ├── docs/
 │   └── README.md                  # this file
@@ -120,7 +120,7 @@ packages/rn-otel/
 
 **Path alias** (wired in `tsconfig.json` and `babel.config.js`):
 ```
-@rn-otel  →  ./packages/rn-otel/src
+@react-native-otel  →  ./packages/react-native-otel/src
 ```
 
 ---
@@ -130,7 +130,7 @@ packages/rn-otel/
 Call `otel.init()` at **module scope** in `App.tsx`, before any React rendering:
 
 ```typescript
-import { OtlpHttpExporter, OtlpHttpMetricExporter, OtlpHttpLogExporter, otel } from '@rn-otel'
+import { OtlpHttpExporter, OtlpHttpMetricExporter, OtlpHttpLogExporter, otel } from '@react-native-otel'
 import * as Application from 'expo-application'
 import * as Device from 'expo-device'
 
@@ -433,7 +433,7 @@ export const spanContext = new SpanContextManager()
 ### OtlpHttpExporter (Traces)
 
 ```typescript
-import { OtlpHttpExporter } from '@rn-otel'
+import { OtlpHttpExporter } from '@react-native-otel'
 
 new OtlpHttpExporter({
   endpoint: string,         // Base URL, e.g. 'https://in-otel.hyperdx.io'
@@ -485,7 +485,7 @@ Same buffering behavior as `OtlpHttpExporter`.
 ### Console Exporters
 
 ```typescript
-import { ConsoleSpanExporter, ConsoleMetricExporter, ConsoleLogExporter } from '@rn-otel'
+import { ConsoleSpanExporter, ConsoleMetricExporter, ConsoleLogExporter } from '@react-native-otel'
 
 // Pretty-prints only when debug: true OR NODE_ENV === 'development'
 new ConsoleSpanExporter()
@@ -542,7 +542,7 @@ The SDK calls `setResource()` and `destroy()` via duck-typing (no interface cast
 Tracks screen transitions as OpenTelemetry spans. Keyed by React Navigation route `key` (not `name`) — handles modals and tabs coexisting safely.
 
 ```typescript
-import { createNavigationInstrumentation } from '@rn-otel'
+import { createNavigationInstrumentation } from '@react-native-otel'
 
 const navOtel = createNavigationInstrumentation(otel.getTracer())
 
@@ -597,7 +597,7 @@ onStateChange={async () => {
 Creates child spans for every HTTP request, parented to the current screen span.
 
 ```typescript
-import { createAxiosInstrumentation } from '@rn-otel'
+import { createAxiosInstrumentation } from '@react-native-otel'
 
 const axiosOtel = createAxiosInstrumentation(tracer, {
   sensitiveKeys: otel.getSensitiveKeys()  // from OtelConfig.sensitiveKeys
@@ -646,7 +646,7 @@ response => axiosOtel.onResponse(response as unknown as OtelAxiosResponse)
 ### Error Handling
 
 ```typescript
-import { installErrorInstrumentation, StorageAdapter } from '@rn-otel'
+import { installErrorInstrumentation, StorageAdapter } from '@react-native-otel'
 
 installErrorInstrumentation({
   tracer: otel.getTracer(),
@@ -682,7 +682,7 @@ interface StorageAdapter {
 }
 ```
 
-rn-otel has **no direct dependency on MMKV**. The app wraps its own MMKV instance:
+react-native-otel has **no direct dependency on MMKV**. The app wraps its own MMKV instance:
 
 ```typescript
 import { MMKV } from 'react-native-mmkv'
@@ -695,7 +695,7 @@ const mmkvAdapter: StorageAdapter = {
 }
 ```
 
-**Crash key:** `'@rn-otel/pending-crash'`
+**Crash key:** `'@react-native-otel/pending-crash'`
 
 **Coverage:** JS exceptions and fatal JS crashes only. Native crashes (SIGSEGV, OOM, jetsam) kill the JS runtime — no JS can run. Use Sentry's native module for native crash coverage.
 
@@ -704,7 +704,7 @@ const mmkvAdapter: StorageAdapter = {
 ### App Lifecycle
 
 ```typescript
-import { installLifecycleInstrumentation } from '@rn-otel'
+import { installLifecycleInstrumentation } from '@react-native-otel'
 
 // Called automatically by otel.init() — no manual wiring needed
 installLifecycleInstrumentation(meter)
@@ -729,7 +729,7 @@ Listens to `AppState.addEventListener('change')`:
 Provides the SDK to the React tree via context. Must be placed after `otel.init()` (i.e., in a component that renders after App.tsx module scope runs).
 
 ```typescript
-import { OtelProvider } from '@rn-otel'
+import { OtelProvider } from '@react-native-otel'
 
 <OtelProvider withErrorBoundary={true}>
   <App />
@@ -748,7 +748,7 @@ interface OtelProviderProps {
 ### useOtel
 
 ```typescript
-import { useOtel } from '@rn-otel'
+import { useOtel } from '@react-native-otel'
 
 const { tracer, meter, logger, recordEvent, setUser } = useOtel()
 
@@ -826,7 +826,7 @@ All attribute names come from `@opentelemetry/semantic-conventions` (stable and 
 
 ```typescript
 // At module scope (before the component definition)
-import { OtlpHttpExporter, OtlpHttpMetricExporter, OtlpHttpLogExporter, otel } from '@rn-otel'
+import { OtlpHttpExporter, OtlpHttpMetricExporter, OtlpHttpLogExporter, otel } from '@react-native-otel'
 import * as Application from 'expo-application'
 import * as Device from 'expo-device'
 
@@ -860,7 +860,7 @@ otel.init({
 ### 2. Root.tsx — OtelProvider + user identity
 
 ```typescript
-import { OtelProvider } from '@rn-otel'
+import { OtelProvider } from '@react-native-otel'
 
 // Inside your root component, in the user identity effect:
 useEffect(() => {
@@ -879,7 +879,7 @@ return (
 ### 3. NavigationContainer.tsx — screen tracking
 
 ```typescript
-import { createNavigationInstrumentation, otel } from '@rn-otel'
+import { createNavigationInstrumentation, otel } from '@react-native-otel'
 import { useMemo, useRef } from 'react'
 
 const navOtel = useMemo(() => createNavigationInstrumentation(otel.getTracer()), [])
@@ -919,7 +919,7 @@ const routeKeyRef = useRef<string | null>(null)
 ### 4. apiClient.ts — network tracking
 
 ```typescript
-import { createAxiosInstrumentation, otel, OtelAxiosRequestConfig, OtelAxiosResponse } from '@rn-otel'
+import { createAxiosInstrumentation, otel, OtelAxiosRequestConfig, OtelAxiosResponse } from '@react-native-otel'
 
 const axiosOtel = createAxiosInstrumentation(otel.getTracer(), {
   sensitiveKeys: otel.getSensitiveKeys()
@@ -940,7 +940,7 @@ apiClient.interceptors.response.use(
 ### 5. analytics.ts — event tracking
 
 ```typescript
-import { otel } from '@rn-otel'
+import { otel } from '@react-native-otel'
 
 export const trackEvent = (eventName: string, props?: any) => {
   otel.recordEvent(eventName, props)  // attaches event to current screen span
@@ -984,7 +984,7 @@ Screen spans are stored in `Map<string, Span>` keyed by React Navigation route `
 
 ### No native crash coverage (explicit non-goal)
 
-`ErrorUtils.setGlobalHandler` catches uncaught JS exceptions only. Native crashes (SIGSEGV, OOM, jetsam) kill the JS thread — no JS runs at crash time. Sentry handles native crash coverage via a C-level signal handler. rn-otel and Sentry run in parallel: rn-otel for JS observability and Amplitude replacement, Sentry for native crash reporting.
+`ErrorUtils.setGlobalHandler` catches uncaught JS exceptions only. Native crashes (SIGSEGV, OOM, jetsam) kill the JS thread — no JS runs at crash time. Sentry handles native crash coverage via a C-level signal handler. react-native-otel and Sentry run in parallel: react-native-otel for JS observability and Amplitude replacement, Sentry for native crash reporting.
 
 ### Sampling via NoopSpan
 

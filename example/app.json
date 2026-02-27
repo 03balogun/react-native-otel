@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "RnOtel Example",
-    "slug": "rn-otel-example",
+    "name": "react-native-otel Example",
+    "slug": "react-native-otel-example",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",

@@ -120,14 +120,14 @@ class OtelSDK {
 
   getTracer(): Tracer {
     if (!this.tracer_) {
-      throw new Error('[rn-otel] SDK not initialized. Call otel.init() first.')
+      throw new Error('[react-native-otel] SDK not initialized. Call otel.init() first.')
     }
     return this.tracer_
   }
 
   getMeter(): Meter {
     if (!this.meter_) {
-      throw new Error('[rn-otel] SDK not initialized. Call otel.init() first.')
+      throw new Error('[react-native-otel] SDK not initialized. Call otel.init() first.')
     }
     return this.meter_
   }
@@ -138,7 +138,7 @@ class OtelSDK {
 
   getLogger(): OtelLogger {
     if (!this.logger_) {
-      throw new Error('[rn-otel] SDK not initialized. Call otel.init() first.')
+      throw new Error('[react-native-otel] SDK not initialized. Call otel.init() first.')
     }
     return this.logger_
   }

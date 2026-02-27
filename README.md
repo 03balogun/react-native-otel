@@ -1,4 +1,4 @@
-# rn-otel
+# react-native-otel
 
 Lightweight OpenTelemetry SDK for React Native
 
@@ -6,7 +6,7 @@ Lightweight OpenTelemetry SDK for React Native
 
 
 ```sh
-npm install rn-otel
+npm install react-native-otel
 ```
 
 
@@ -14,7 +14,7 @@ npm install rn-otel
 
 
 ```js
-import { multiply } from 'rn-otel';
+import { multiply } from 'react-native-otel';
 
 // ...
 

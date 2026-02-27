@@ -8,7 +8,7 @@ import { Span } from '../core/span'
 import { Tracer } from '../core/tracer'
 import { ReadonlySpan } from '../exporters/types'
 
-const CRASH_KEY = '@rn-otel/pending-crash'
+const CRASH_KEY = '@react-native-otel/pending-crash'
 
 export interface StorageAdapter {
   setSync(key: string, value: string): void
