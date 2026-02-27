@@ -18,6 +18,7 @@ jobs:
     if: github.actor != 'github-actions[bot]'
     permissions:
       contents: write
+      id-token: write
 
     steps:
       - name: Checkout
@@ -84,7 +85,7 @@ jobs:
 
       - name: Publish to npm
         if: steps.tag_check.outputs.exists == 'false'
-        run: npm publish --ignore-scripts
+        run: npm publish --ignore-scripts --provenance
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_SEC }}
 
