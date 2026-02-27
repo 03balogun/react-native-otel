@@ -45,14 +45,14 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/user/react-native-otel.git"
+    "url": "git+https://github.com/03balogun/react-native-otel.git"
   },
-  "author": "Wahab Balogun <03balogun@gmail.com> (https://github.com)",
+  "author": "Wahab Balogun (https://github.com/03balogun)",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/user/react-native-otel/issues"
+    "url": "https://github.com/03balogun/react-native-otel/issues"
   },
-  "homepage": "https://github.com/user/react-native-otel#readme",
+  "homepage": "https://github.com/03balogun/react-native-otel#readme",
   "publishConfig": {
     "registry": "https://registry.npmjs.org/"
   },
