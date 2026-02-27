@@ -4,6 +4,7 @@ import type {
   LogExporter,
   ReadonlySpan,
   MetricRecord,
+  HistogramRecord,
   LogRecord,
 } from './types';
 
@@ -60,10 +61,23 @@ export class ConsoleMetricExporter implements MetricExporter {
     if (!shouldLog(this.debug)) return;
 
     for (const metric of metrics) {
-      console.log(
-        `[OTEL METRIC] ${metric.name} ${metric.type} value=${metric.value}`,
-        Object.keys(metric.attributes).length > 0 ? metric.attributes : ''
-      );
+      if (metric.type === 'histogram') {
+        const h = metric as HistogramRecord;
+        const avg = h.count > 0 ? (h.sum / h.count).toFixed(2) : '0';
+        const bucketStr = h.bucketBoundaries
+          .map((b, i) => `≤${b}:${h.bucketCounts[i]}`)
+          .concat([`+Inf:${h.bucketCounts[h.bucketBoundaries.length]}`])
+          .join(' ');
+        console.log(
+          `[OTEL METRIC] ${h.name} histogram count=${h.count} sum=${h.sum} avg=${avg} [${bucketStr}]`,
+          Object.keys(h.attributes).length > 0 ? h.attributes : ''
+        );
+      } else {
+        console.log(
+          `[OTEL METRIC] ${metric.name} ${metric.type} value=${metric.value}`,
+          Object.keys(metric.attributes).length > 0 ? metric.attributes : ''
+        );
+      }
     }
   }
 }

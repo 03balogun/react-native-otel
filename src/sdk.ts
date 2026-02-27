@@ -76,8 +76,9 @@ class OtelSDK {
       environment: config.environment ?? 'production',
     });
 
-    // If any exporter supports resource injection (e.g. OtlpHttp*Exporter),
-    // hand it the resource so it can include it in OTLP payloads.
+    // If any exporter supports resource/storage injection (e.g. OtlpHttp*Exporter),
+    // hand it the resource and optional storage so it can include them in payloads
+    // and persist undelivered batches across sessions.
     const injectResource = (exp: unknown) => {
       if (exp && typeof exp === 'object' && 'setResource' in exp) {
         (exp as { setResource(r: Readonly<Resource>): void }).setResource(
@@ -85,9 +86,23 @@ class OtelSDK {
         );
       }
     };
+    const injectStorage = (exp: unknown) => {
+      if (
+        config.storage &&
+        exp &&
+        typeof exp === 'object' &&
+        'setStorage' in exp
+      ) {
+        (exp as { setStorage(s: typeof config.storage): void }).setStorage(
+          config.storage
+        );
+      }
+    };
     injectResource(config.exporter);
     injectResource(config.metricExporter);
     injectResource(config.logExporter);
+    injectStorage(config.exporter);
+    injectStorage(config.metricExporter);
 
     this.tracer_ = new Tracer({
       exporter: config.exporter,
@@ -151,6 +166,20 @@ class OtelSDK {
       );
     }
     return this.logger_;
+  }
+
+  // Flush all buffered spans and metrics without tearing down the SDK.
+  // Call this before a JS-initiated restart or when you want to ensure delivery
+  // before a predictable exit (e.g. logout flow, app update prompt).
+  flush(): void {
+    this.meter_?.flush();
+    const flushExporter = (exp: unknown) => {
+      if (exp && typeof exp === 'object' && 'flush' in exp) {
+        (exp as { flush(): void }).flush();
+      }
+    };
+    flushExporter(this.exporter_);
+    flushExporter(this.logExporter_);
   }
 
   async shutdown(): Promise<void> {

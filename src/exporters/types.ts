@@ -3,13 +3,34 @@ import type { ReadonlySpan, SpanExporter } from '../core/span';
 
 export type { ReadonlySpan, SpanExporter };
 
-export interface MetricRecord {
-  type: 'counter' | 'histogram' | 'gauge';
+interface BaseMetricRecord {
   name: string;
-  value: number;
   timestampMs: number;
   attributes: Attributes;
 }
+
+export interface CounterRecord extends BaseMetricRecord {
+  type: 'counter';
+  value: number;
+}
+
+export interface GaugeRecord extends BaseMetricRecord {
+  type: 'gauge';
+  value: number;
+}
+
+export interface HistogramRecord extends BaseMetricRecord {
+  type: 'histogram';
+  // Aggregated data for the flush window
+  count: number;
+  sum: number;
+  // Explicit bucket upper bounds (last bucket is +Inf, implicit)
+  bucketBoundaries: number[];
+  // Length is bucketBoundaries.length + 1 (last entry = +Inf bucket)
+  bucketCounts: number[];
+}
+
+export type MetricRecord = CounterRecord | GaugeRecord | HistogramRecord;
 
 export interface LogRecord {
   timestampMs: number;

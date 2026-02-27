@@ -3,10 +3,15 @@ import type {
   LogRecord,
   MetricExporter,
   MetricRecord,
+  CounterRecord,
+  HistogramRecord,
+  GaugeRecord,
 } from './types';
 import type { Attributes } from '../core/attributes';
 import type { Resource } from '../core/resource';
 import type { ReadonlySpan, SpanExporter } from '../core/span';
+import type { StorageAdapter } from '../instrumentation/errors';
+import { Wal, fetchWithRetry } from './wal';
 
 // ─── OTLP attribute value serialization ──────────────────────────────────────
 
@@ -79,6 +84,7 @@ export class OtlpHttpExporter implements SpanExporter {
   private buffer: ReadonlySpan[] = [];
   private resource_: Readonly<Resource> | undefined;
   private timer_: ReturnType<typeof setInterval> | undefined;
+  private wal_: Wal<ReadonlySpan> | undefined;
 
   constructor(options: OtlpHttpExporterOptions) {
     this.tracesEndpoint = options.endpoint.replace(/\/$/, '') + '/v1/traces';
@@ -99,6 +105,20 @@ export class OtlpHttpExporter implements SpanExporter {
     this.resource_ = resource;
   }
 
+  // Called by OtelSDK.init() when a StorageAdapter is configured.
+  // Initialises the WAL and replays any undelivered batches from the previous session.
+  setStorage(storage: StorageAdapter): void {
+    this.wal_ = new Wal<ReadonlySpan>(storage, '@react-native-otel/wal/spans');
+    this.replayWal();
+  }
+
+  private replayWal(): void {
+    if (!this.wal_) return;
+    for (const batch of this.wal_.readAll()) {
+      this.deliverBatch(batch.data as ReadonlySpan[], batch.id);
+    }
+  }
+
   export(spans: ReadonlySpan[]): void {
     this.buffer.push(...spans);
     if (this.buffer.length >= this.batchSize) {
@@ -109,7 +129,12 @@ export class OtlpHttpExporter implements SpanExporter {
   flush(): void {
     if (this.buffer.length === 0) return;
     const batch = this.buffer.splice(0);
-    this.send(batch);
+    if (this.wal_) {
+      const id = this.wal_.write(batch);
+      this.deliverBatch(batch, id);
+    } else {
+      this.deliverBatch(batch, undefined);
+    }
   }
 
   // Clear the flush timer and send any remaining buffered spans.
@@ -121,12 +146,29 @@ export class OtlpHttpExporter implements SpanExporter {
     this.flush();
   }
 
-  private send(spans: ReadonlySpan[]): void {
+  private deliverBatch(spans: ReadonlySpan[], walId: string | undefined): void {
+    const body = this.buildBody(spans);
+    fetchWithRetry(this.tracesEndpoint, {
+      method: 'POST',
+      headers: this.headers,
+      body,
+    })
+      .then((success) => {
+        if (success && walId !== undefined) {
+          this.wal_?.delete(walId);
+        }
+      })
+      .catch(() => {
+        // Leave in WAL for next session
+      });
+  }
+
+  private buildBody(spans: ReadonlySpan[]): string {
     const resourceAttrs = this.resource_
       ? toOtlpAttributes(this.resource_ as unknown as Record<string, unknown>)
       : [];
 
-    const body = JSON.stringify({
+    return JSON.stringify({
       resourceSpans: [
         {
           resource: { attributes: resourceAttrs },
@@ -139,12 +181,6 @@ export class OtlpHttpExporter implements SpanExporter {
         },
       ],
     });
-
-    fetch(this.tracesEndpoint, {
-      method: 'POST',
-      headers: this.headers,
-      body,
-    }).catch(() => {});
   }
 
   private toOtlpSpan(span: ReadonlySpan) {
@@ -175,7 +211,8 @@ export class OtlpHttpExporter implements SpanExporter {
 
 // ─── Metric exporter ──────────────────────────────────────────────────────────
 
-// OTLP aggregation temporality: 2 = CUMULATIVE
+// OTLP aggregation temporality constants
+const AGGREGATION_TEMPORALITY_DELTA = 1;
 const AGGREGATION_TEMPORALITY_CUMULATIVE = 2;
 
 export interface OtlpHttpMetricExporterOptions {
@@ -187,6 +224,7 @@ export class OtlpHttpMetricExporter implements MetricExporter {
   private readonly metricsEndpoint: string;
   private readonly headers: Record<string, string>;
   private resource_: Readonly<Resource> | undefined;
+  private wal_: Wal<MetricRecord> | undefined;
 
   constructor(options: OtlpHttpMetricExporterOptions) {
     this.metricsEndpoint = options.endpoint.replace(/\/$/, '') + '/v1/metrics';
@@ -200,12 +238,52 @@ export class OtlpHttpMetricExporter implements MetricExporter {
     this.resource_ = resource;
   }
 
-  export(metrics: MetricRecord[]): void {
-    if (metrics.length === 0) return;
-    this.send(metrics);
+  setStorage(storage: StorageAdapter): void {
+    this.wal_ = new Wal<MetricRecord>(
+      storage,
+      '@react-native-otel/wal/metrics'
+    );
+    this.replayWal();
   }
 
-  private send(metrics: MetricRecord[]): void {
+  private replayWal(): void {
+    if (!this.wal_) return;
+    for (const batch of this.wal_.readAll()) {
+      this.deliverBatch(batch.data as MetricRecord[], batch.id);
+    }
+  }
+
+  export(metrics: MetricRecord[]): void {
+    if (metrics.length === 0) return;
+    if (this.wal_) {
+      const id = this.wal_.write(metrics);
+      this.deliverBatch(metrics, id);
+    } else {
+      this.deliverBatch(metrics, undefined);
+    }
+  }
+
+  private deliverBatch(
+    metrics: MetricRecord[],
+    walId: string | undefined
+  ): void {
+    const body = this.buildBody(metrics);
+    fetchWithRetry(this.metricsEndpoint, {
+      method: 'POST',
+      headers: this.headers,
+      body,
+    })
+      .then((success) => {
+        if (success && walId !== undefined) {
+          this.wal_?.delete(walId);
+        }
+      })
+      .catch(() => {
+        // Leave in WAL for next session
+      });
+  }
+
+  private buildBody(metrics: MetricRecord[]): string {
     const resourceAttrs = this.resource_
       ? toOtlpAttributes(this.resource_ as unknown as Record<string, unknown>)
       : [];
@@ -224,12 +302,11 @@ export class OtlpHttpMetricExporter implements MetricExporter {
     const otlpMetrics = Array.from(byName.entries()).map(([name, records]) => {
       const type = records[0]?.type;
 
-      // Counters → sum; histograms + gauges → gauge (no bucket data available).
       if (type === 'counter') {
         return {
           name,
           sum: {
-            dataPoints: records.map((r) => ({
+            dataPoints: (records as CounterRecord[]).map((r) => ({
               asDouble: r.value,
               startTimeUnixNano: msToNano(r.timestampMs),
               timeUnixNano: msToNano(r.timestampMs),
@@ -241,10 +318,32 @@ export class OtlpHttpMetricExporter implements MetricExporter {
         };
       }
 
+      if (type === 'histogram') {
+        return {
+          name,
+          histogram: {
+            dataPoints: (records as HistogramRecord[]).map((r) => ({
+              count: String(r.count),
+              sum: r.sum,
+              // bucketCounts in OTLP are string-encoded uint64
+              bucketCounts: r.bucketCounts.map(String),
+              // explicitBounds does not include the implicit +Inf upper bound
+              explicitBounds: r.bucketBoundaries,
+              startTimeUnixNano: msToNano(r.timestampMs),
+              timeUnixNano: msToNano(r.timestampMs),
+              attributes: toOtlpAttributes(r.attributes),
+            })),
+            // Each flush window is independent — use DELTA semantics.
+            aggregationTemporality: AGGREGATION_TEMPORALITY_DELTA,
+          },
+        };
+      }
+
+      // gauge
       return {
         name,
         gauge: {
-          dataPoints: records.map((r) => ({
+          dataPoints: (records as GaugeRecord[]).map((r) => ({
             asDouble: r.value,
             timeUnixNano: msToNano(r.timestampMs),
             attributes: toOtlpAttributes(r.attributes),
@@ -253,7 +352,7 @@ export class OtlpHttpMetricExporter implements MetricExporter {
       };
     });
 
-    const body = JSON.stringify({
+    return JSON.stringify({
       resourceMetrics: [
         {
           resource: { attributes: resourceAttrs },
@@ -266,12 +365,6 @@ export class OtlpHttpMetricExporter implements MetricExporter {
         },
       ],
     });
-
-    fetch(this.metricsEndpoint, {
-      method: 'POST',
-      headers: this.headers,
-      body,
-    }).catch(() => {});
   }
 }
 
@@ -368,7 +461,7 @@ export class OtlpHttpLogExporter implements LogExporter {
       ],
     });
 
-    fetch(this.logsEndpoint, {
+    fetchWithRetry(this.logsEndpoint, {
       method: 'POST',
       headers: this.headers,
       body,
