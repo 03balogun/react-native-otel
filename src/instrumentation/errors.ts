@@ -6,7 +6,7 @@ import {
 
 import { Span } from '../core/span';
 import { Tracer } from '../core/tracer';
-import { ReadonlySpan } from '../exporters/types';
+import type { ReadonlySpan } from '../exporters/types';
 
 const CRASH_KEY = '@react-native-otel/pending-crash';
 

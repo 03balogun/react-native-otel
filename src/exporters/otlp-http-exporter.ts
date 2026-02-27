@@ -1,7 +1,12 @@
-import { LogExporter, LogRecord, MetricExporter, MetricRecord } from './types';
-import { Attributes } from '../core/attributes';
-import { Resource } from '../core/resource';
-import { ReadonlySpan, SpanExporter } from '../core/span';
+import type {
+  LogExporter,
+  LogRecord,
+  MetricExporter,
+  MetricRecord,
+} from './types';
+import type { Attributes } from '../core/attributes';
+import type { Resource } from '../core/resource';
+import type { ReadonlySpan, SpanExporter } from '../core/span';
 
 // ─── OTLP attribute value serialization ──────────────────────────────────────
 
@@ -217,7 +222,7 @@ export class OtlpHttpMetricExporter implements MetricExporter {
     }
 
     const otlpMetrics = Array.from(byName.entries()).map(([name, records]) => {
-      const type = records[0].type;
+      const type = records[0]?.type;
 
       // Counters → sum; histograms + gauges → gauge (no bucket data available).
       if (type === 'counter') {

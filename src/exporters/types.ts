@@ -1,29 +1,29 @@
-import { Attributes } from '../core/attributes'
-import { ReadonlySpan, SpanExporter } from '../core/span'
+import type { Attributes } from '../core/attributes';
+import type { ReadonlySpan, SpanExporter } from '../core/span';
 
-export type { ReadonlySpan, SpanExporter }
+export type { ReadonlySpan, SpanExporter };
 
 export interface MetricRecord {
-  type: 'counter' | 'histogram' | 'gauge'
-  name: string
-  value: number
-  timestampMs: number
-  attributes: Attributes
+  type: 'counter' | 'histogram' | 'gauge';
+  name: string;
+  value: number;
+  timestampMs: number;
+  attributes: Attributes;
 }
 
 export interface LogRecord {
-  timestampMs: number
-  severity: string
-  body: string
-  traceId: string | undefined
-  spanId: string | undefined
-  attributes: Attributes
+  timestampMs: number;
+  severity: string;
+  body: string;
+  traceId: string | undefined;
+  spanId: string | undefined;
+  attributes: Attributes;
 }
 
 export interface MetricExporter {
-  export(metrics: MetricRecord[]): void
+  export(metrics: MetricRecord[]): void;
 }
 
 export interface LogExporter {
-  export(logs: LogRecord[]): void
+  export(logs: LogRecord[]): void;
 }

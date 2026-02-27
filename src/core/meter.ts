@@ -1,13 +1,11 @@
-import { Attributes, sanitizeAttributes } from './attributes'
-import { now } from './clock'
-import { MetricExporter, MetricRecord } from '../exporters/types'
+import type { Attributes } from './attributes';
+import type { MetricExporter, MetricRecord } from '../exporters/types';
+import { sanitizeAttributes } from './attributes';
+import { now } from './clock';
 
 export class Counter {
-  private buffer: MetricRecord[] = []
-
   constructor(
     private name: string,
-    private getBuffer: () => MetricRecord[],
     private pushToBuffer: (record: MetricRecord) => void
   ) {}
 
@@ -17,8 +15,8 @@ export class Counter {
       name: this.name,
       value,
       timestampMs: now(),
-      attributes: attrs ? sanitizeAttributes(attrs) : {}
-    })
+      attributes: attrs ? sanitizeAttributes(attrs) : {},
+    });
   }
 }
 
@@ -34,8 +32,8 @@ export class Histogram {
       name: this.name,
       value,
       timestampMs: now(),
-      attributes: attrs ? sanitizeAttributes(attrs) : {}
-    })
+      attributes: attrs ? sanitizeAttributes(attrs) : {},
+    });
   }
 }
 
@@ -51,38 +49,34 @@ export class Gauge {
       name: this.name,
       value,
       timestampMs: now(),
-      attributes: attrs ? sanitizeAttributes(attrs) : {}
-    })
+      attributes: attrs ? sanitizeAttributes(attrs) : {},
+    });
   }
 }
 
 export class Meter {
-  private buffer: MetricRecord[] = []
-  private exporter: MetricExporter | undefined
+  private buffer: MetricRecord[] = [];
+  private exporter: MetricExporter | undefined;
 
   constructor(exporter?: MetricExporter) {
-    this.exporter = exporter
+    this.exporter = exporter;
   }
 
   createCounter(name: string): Counter {
-    return new Counter(
-      name,
-      () => this.buffer,
-      r => this.buffer.push(r)
-    )
+    return new Counter(name, (r) => this.buffer.push(r));
   }
 
   createHistogram(name: string): Histogram {
-    return new Histogram(name, r => this.buffer.push(r))
+    return new Histogram(name, (r) => this.buffer.push(r));
   }
 
   createGauge(name: string): Gauge {
-    return new Gauge(name, r => this.buffer.push(r))
+    return new Gauge(name, (r) => this.buffer.push(r));
   }
 
   flush(): void {
-    if (this.buffer.length === 0) return
-    const toExport = this.buffer.splice(0, this.buffer.length)
-    this.exporter?.export(toExport)
+    if (this.buffer.length === 0) return;
+    const toExport = this.buffer.splice(0, this.buffer.length);
+    this.exporter?.export(toExport);
   }
 }

@@ -4,8 +4,9 @@ import {
   ATTR_EXCEPTION_TYPE,
 } from '@opentelemetry/semantic-conventions';
 
-import { Attributes } from './attributes';
-import { Span, SpanContext, SpanExporter, SpanKind, NoopSpan } from './span';
+import type { Attributes } from './attributes';
+import type { SpanContext, SpanExporter, SpanKind } from './span';
+import { Span, NoopSpan } from './span';
 import { spanContext } from '../context/span-context';
 
 export class Tracer {

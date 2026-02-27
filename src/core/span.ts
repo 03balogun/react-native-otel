@@ -4,7 +4,8 @@ import {
   ATTR_EXCEPTION_TYPE,
 } from '@opentelemetry/semantic-conventions';
 
-import { Attributes, sanitizeAttributes, sanitizeValue } from './attributes';
+import type { Attributes } from './attributes';
+import { sanitizeAttributes, sanitizeValue } from './attributes';
 import { now } from './clock';
 import { generateSpanId, generateTraceId } from './ids';
 

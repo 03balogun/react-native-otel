@@ -1,7 +1,8 @@
-import { Attributes, sanitizeAttributes } from './attributes';
+import type { Attributes } from './attributes';
+import type { LogExporter, LogRecord } from '../exporters/types';
+import { sanitizeAttributes } from './attributes';
 import { now } from './clock';
 import { spanContext } from '../context/span-context';
-import { LogExporter, LogRecord } from '../exporters/types';
 
 export type LogSeverity =
   | 'TRACE'

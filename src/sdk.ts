@@ -1,14 +1,18 @@
+import type { Attributes } from './core/attributes';
+import type { Resource } from './core/resource';
+import type {
+  SpanExporter,
+  MetricExporter,
+  LogExporter,
+} from './exporters/types';
+import type { StorageAdapter } from './instrumentation/errors';
 import { spanContext } from './context/span-context';
-import { Attributes, setMaxStringLength } from './core/attributes';
+import { setMaxStringLength } from './core/attributes';
 import { OtelLogger } from './core/log-record';
 import { Meter } from './core/meter';
-import { buildResource, Resource } from './core/resource';
+import { buildResource } from './core/resource';
 import { Tracer } from './core/tracer';
-import { SpanExporter, MetricExporter, LogExporter } from './exporters/types';
-import {
-  StorageAdapter,
-  installErrorInstrumentation,
-} from './instrumentation/errors';
+import { installErrorInstrumentation } from './instrumentation/errors';
 import { installLifecycleInstrumentation } from './instrumentation/lifecycle';
 
 export interface OtelConfig {

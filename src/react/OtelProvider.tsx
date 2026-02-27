@@ -1,4 +1,9 @@
-import React, { createContext, Component, ErrorInfo, ReactNode } from 'react';
+import React, {
+  createContext,
+  Component,
+  type ErrorInfo,
+  type ReactNode,
+} from 'react';
 
 import { OtelLogger } from '../core/log-record';
 import { Meter } from '../core/meter';
