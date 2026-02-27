@@ -12,6 +12,10 @@ concurrency:
 jobs:
   release:
     runs-on: ubuntu-latest
+    # Skip the version-bump commit that this workflow pushes to avoid an
+    # infinite trigger loop. The commit message contains [skip ci] as a
+    # belt-and-suspenders guard, but this condition is the primary gate.
+    if: github.actor != 'github-actions[bot]'
     permissions:
       contents: write
 
@@ -21,20 +25,44 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Get version
-        id: version
+      - name: Get current version
+        id: current_version
         run: echo "value=$(node -p "require('./package.json').version")" >> $GITHUB_OUTPUT
 
-      - name: Check if tag exists
+      - name: Compute next patch version
+        id: next_version
+        run: |
+          next=$(node -p "
+            const v = '${{ steps.current_version.outputs.value }}'.split('.');
+            v[2] = parseInt(v[2]) + 1;
+            v.join('.');
+          ")
+          echo "value=$next" >> $GITHUB_OUTPUT
+          echo "Bumping ${{ steps.current_version.outputs.value }} → $next"
+
+      - name: Check if tag already exists
         id: tag_check
         run: |
           git fetch --tags
-          if git tag --list "v${{ steps.version.outputs.value }}" | grep -q .; then
+          if git tag --list "v${{ steps.next_version.outputs.value }}" | grep -q .; then
             echo "exists=true" >> $GITHUB_OUTPUT
-            echo "Tag v${{ steps.version.outputs.value }} already exists — skipping release"
+            echo "Tag v${{ steps.next_version.outputs.value }} already exists — skipping release"
           else
             echo "exists=false" >> $GITHUB_OUTPUT
           fi
+
+      - name: Update package.json version
+        if: steps.tag_check.outputs.exists == 'false'
+        run: npm version ${{ steps.next_version.outputs.value }} --no-git-tag-version
+
+      - name: Commit and push version bump
+        if: steps.tag_check.outputs.exists == 'false'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add package.json
+          git commit -m "chore: bump version to v${{ steps.next_version.outputs.value }} [skip ci]"
+          git push origin HEAD:main
 
       - name: Setup Node.js
         if: steps.tag_check.outputs.exists == 'false'
@@ -57,19 +85,17 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-      - name: Create tag
+      - name: Create git tag
         if: steps.tag_check.outputs.exists == 'false'
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag -a "v${{ steps.version.outputs.value }}" -m "Release v${{ steps.version.outputs.value }}"
-          git push origin "v${{ steps.version.outputs.value }}"
+          git tag -a "v${{ steps.next_version.outputs.value }}" -m "Release v${{ steps.next_version.outputs.value }}"
+          git push origin "v${{ steps.next_version.outputs.value }}"
 
       - name: Create GitHub release
         if: steps.tag_check.outputs.exists == 'false'
         run: |
-          gh release create "v${{ steps.version.outputs.value }}" \
-            --title "v${{ steps.version.outputs.value }}" \
+          gh release create "v${{ steps.next_version.outputs.value }}" \
+            --title "v${{ steps.next_version.outputs.value }}" \
             --generate-notes
         env:
           GH_TOKEN: ${{ github.token }}
