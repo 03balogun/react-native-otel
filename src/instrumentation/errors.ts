@@ -92,4 +92,31 @@ export function installErrorInstrumentation(params: {
 
     originalHandler?.(error, isFatal);
   });
+
+  // Wire up unhandled Promise rejection tracking.
+  // globalThis.onunhandledrejection is available in Hermes (default RN engine since 0.70).
+  // Without this, async errors that are never .catch()-ed are silently swallowed.
+  const prevRejectionHandler = (globalThis as Record<string, unknown>)
+    .onunhandledrejection as ((event: { reason: unknown }) => void) | undefined;
+
+  (globalThis as Record<string, unknown>).onunhandledrejection = (event: {
+    reason: unknown;
+  }) => {
+    const reason = event.reason;
+    const error = reason instanceof Error ? reason : new Error(String(reason));
+
+    const span = tracer.startSpan(`unhandled_rejection.${error.name}`, {
+      kind: 'INTERNAL',
+      attributes: {
+        [ATTR_EXCEPTION_TYPE]: error.name,
+        [ATTR_EXCEPTION_MESSAGE]: error.message,
+        [ATTR_EXCEPTION_STACKTRACE]: error.stack ?? '',
+        'exception.unhandled_rejection': true,
+      },
+    });
+    span.setStatus('ERROR', error.message);
+    span.end();
+
+    prevRejectionHandler?.call(globalThis, event);
+  };
 }

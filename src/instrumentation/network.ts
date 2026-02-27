@@ -173,6 +173,16 @@ export function createAxiosInstrumentation(
         if (serialized) span.setAttribute('http.request.body', serialized);
       }
 
+      // W3C Trace Context: inject traceparent header so the backend can continue
+      // the trace. Only injected for sampled (real) spans — NoopSpan has empty IDs.
+      if (span instanceof Span) {
+        // flags: 01 = sampled
+        config.headers = {
+          ...(config.headers ?? {}),
+          traceparent: `00-${span.traceId}-${span.spanId}-01`,
+        };
+      }
+
       activeNetworkSpans.set(otelId, span);
       config.__otelId = otelId;
       return config;

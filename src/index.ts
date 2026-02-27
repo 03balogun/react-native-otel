@@ -12,6 +12,7 @@ export type {
 } from './core/span';
 export { Tracer } from './core/tracer';
 export { Meter, Counter, Histogram, Gauge } from './core/meter';
+export type { HistogramOptions } from './core/meter';
 export { OtelLogger } from './core/log-record';
 export type { LogSeverity } from './core/log-record';
 export type { Attributes, AttributeValue } from './core/attributes';
@@ -19,6 +20,7 @@ export type { Resource } from './core/resource';
 
 // Context
 export { spanContext } from './context/span-context';
+export type { SpanContextManagerPublic } from './context/span-context';
 
 // Exporters
 export type {
