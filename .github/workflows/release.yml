@@ -64,7 +64,8 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git pull --rebase origin main
           npm version ${{ steps.next_version.outputs.value }} --no-git-tag-version
-          git add package.json
+          sed -i "s/SDK_VERSION = '.*'/SDK_VERSION = '${{ steps.next_version.outputs.value }}'/" src/version.ts
+          git add package.json src/version.ts
           git commit -m "chore: bump version to v${{ steps.next_version.outputs.value }} [skip ci]"
           git push origin HEAD:main
 
