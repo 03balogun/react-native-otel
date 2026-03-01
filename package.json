@@ -1,6 +1,6 @@
 {
   "name": "react-native-otel",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "Lightweight OpenTelemetry SDK for React Native",
   "main": "./lib/module/index.js",
   "types": "./lib/typescript/src/index.d.ts",
