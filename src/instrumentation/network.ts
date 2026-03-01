@@ -106,6 +106,8 @@ function toJsonAttr(obj: Record<string, unknown>): string | undefined {
 // ─── Factory ─────────────────────────────────────────────────────────────────
 
 export interface AxiosInstrumentationOptions {
+  // URL substrings to skip entirely — no span is created for matching requests.
+  ignoreUrls?: string[];
   // Dot-notation paths to redact. Section prefixes:
   //   header.{key}   — request and response headers
   //   body.{key}     — request body
@@ -118,6 +120,7 @@ export function createAxiosInstrumentation(
   tracer: Tracer,
   options?: AxiosInstrumentationOptions
 ) {
+  const ignoreUrls = options?.ignoreUrls ?? [];
   const paths = (options?.sensitiveKeys ?? []).map((k) => k.toLowerCase());
 
   // Pre-compute sensitive leaf-key sets once at setup time, not per-request.
@@ -128,9 +131,14 @@ export function createAxiosInstrumentation(
 
   return {
     onRequest(config: AxiosRequestConfig): AxiosRequestConfig {
-      const otelId = generateSpanId();
       const method = (config.method ?? 'GET').toUpperCase();
       const url = config.url ?? '';
+
+      if (ignoreUrls.some((pattern) => url.includes(pattern))) {
+        return config;
+      }
+
+      const otelId = generateSpanId();
 
       // Capture parent context NOW by value — concurrent-safe.
       const currentSpan = spanContext.current();
