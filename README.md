@@ -581,18 +581,8 @@ class MySampler implements Sampler {
 Span processors run synchronously at span start and end. Use them to enrich spans with extra attributes, filter spans, or forward to a custom exporter without going through the SDK exporter chain.
 
 ```ts
-import {
-  SimpleSpanProcessor,
-  NoopSpanProcessor,
-} from 'react-native-otel';
-import type { SpanProcessor, ReadonlySpan } from 'react-native-otel';
-import type { Span } from 'react-native-otel';
-
-// SimpleSpanProcessor: wraps an exporter — calls export() immediately on end().
-otel.init({
-  serviceName: 'my-app',
-  processors: [new SimpleSpanProcessor(myCustomExporter)],
-});
+import { SimpleSpanProcessor } from 'react-native-otel';
+import type { SpanProcessor, ReadonlySpan, Span } from 'react-native-otel';
 
 // Custom processor: enrich every span with a 'session.id' attribute.
 class SessionProcessor implements SpanProcessor {
@@ -605,7 +595,10 @@ class SessionProcessor implements SpanProcessor {
 otel.init({
   serviceName: 'my-app',
   exporter: new OtlpHttpExporter({ endpoint: '...' }),
-  processors: [new SessionProcessor()],
+  processors: [
+    new SessionProcessor(),               // enrich spans
+    new SimpleSpanProcessor(myExporter),  // also forward to a second exporter
+  ],
 });
 ```
 
@@ -911,8 +904,6 @@ otel.init({
 });
 ```
 
-> `AsyncStorage` is not compatible — the adapter must be synchronous.
-
 ---
 
 ## Connectivity-Aware Flushing
@@ -973,12 +964,17 @@ navigation.reset({ routes: [{ name: 'Login' }] });
 
 ### otel.shutdown()
 
-Ends the active screen span, flushes all buffers, clears flush timers, and removes the network listener.
+Ends the active screen span, flushes all buffers, clears flush timers, and removes the network listener. Call it once when the application is truly done — for example, during a logout flow or before a controlled restart. It is a one-way teardown; do not call it on every background transition.
 
 ```ts
+// Flush buffered data when the app moves to the background.
 AppState.addEventListener('change', (state) => {
-  if (state === 'background') otel.shutdown();
+  if (state === 'background') otel.flush();
 });
+
+// Full teardown on logout (optional).
+await api.logout();
+await otel.shutdown();
 ```
 
 ---
