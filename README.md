@@ -121,7 +121,7 @@ otel.init({
 });
 ```
 
-`osName` and `osVersion` are auto-detected from `Platform.OS` / `Platform.Version` when omitted. Navigation, network, and error instrumentation are wired up separately (see below) for full control over what gets traced.
+`osName` and `osVersion` are auto-detected from `Platform.OS` / `Platform.Version` when omitted. `fetch`, error, and lifecycle instrumentation are installed automatically. Navigation and Axios instrumentation require explicit setup (see below).
 
 ---
 
@@ -1093,10 +1093,6 @@ The `StorageAdapter` interface requires synchronous `get`/`set`/`delete`. `Async
 ### WAL storage limits
 
 The WAL caps at **3 batches per signal type** with a maximum of **500 items per batch**. Data beyond these limits is evicted (oldest first). Very high-volume apps could lose telemetry during extended offline periods.
-
-### Expo Router instrumentation is opt-in
-
-`useExpoRouterInstrumentation` is available via the `react-native-otel/expo-router` sub-path export. Ensure `expo-router` is installed before using it.
 
 ---
 
