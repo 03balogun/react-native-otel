@@ -397,6 +397,16 @@ Automatically installed by `otel.init()`. No additional setup required.
 
 **Crash persistence:** Fatal error spans are written synchronously to the `StorageAdapter` before the process terminates and exported on the next app launch.
 
+**Stack trace symbolication:**
+
+In development (`__DEV__ === true`), the SDK automatically symbolicate stack traces by calling Metro's `/symbolicate` endpoint — the same mechanism used by React Native's red-screen overlay. `exception.stacktrace` will contain real source file paths and line numbers instead of bundle URLs. A `exception.code_frame` attribute is also added when Metro returns the surrounding source context.
+
+In production, the raw bundle stack trace is captured. To resolve exact source locations from production crashes, upload the Metro source map to your OTEL/APM backend:
+
+- **EAS Build** — enable `"sourceMap": true` in your `eas.json` build profile, then upload the generated `.map` file.
+- **Bare React Native** — pass `--sourcemap-output <file>` to `react-native bundle` and upload the resulting map.
+- Most backends (Datadog, Grafana Faro, Sentry) have a source-map upload CLI that maps `exception.stacktrace` bundle offsets back to source files automatically.
+
 ---
 
 ## Tracing
