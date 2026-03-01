@@ -1,3 +1,5 @@
+import { Platform } from 'react-native';
+
 import type { Attributes } from './core/attributes';
 import type { Resource } from './core/resource';
 import type {
@@ -6,6 +8,8 @@ import type {
   LogExporter,
 } from './exporters/types';
 import type { StorageAdapter } from './instrumentation/errors';
+import type { Sampler } from './core/sampler';
+import type { SpanProcessor } from './core/span';
 import { spanContext } from './context/span-context';
 import { setMaxStringLength } from './core/attributes';
 import { OtelLogger } from './core/log-record';
@@ -14,6 +18,37 @@ import { buildResource } from './core/resource';
 import { Tracer } from './core/tracer';
 import { installErrorInstrumentation } from './instrumentation/errors';
 import { installLifecycleInstrumentation } from './instrumentation/lifecycle';
+import {
+  createFetchInstrumentation,
+  uninstallFetchInstrumentation,
+} from './instrumentation/fetch';
+import { setFetchImpl } from './exporters/wal';
+
+/**
+ * Implement this interface to let the SDK pause/resume flush operations based
+ * on network connectivity — without adding a native dependency.
+ *
+ * Example (using @react-native-community/netinfo):
+ * ```ts
+ * import NetInfo from '@react-native-community/netinfo';
+ *
+ * const networkAdapter: NetworkAdapter = {
+ *   addListener(cb) {
+ *     const unsub = NetInfo.addEventListener(state => cb(!!state.isConnected));
+ *     return unsub;
+ *   },
+ * };
+ * otel.init({ ..., networkAdapter });
+ * ```
+ */
+export interface NetworkAdapter {
+  /**
+   * Register a callback that is called with `true` when the device comes
+   * online and `false` when it goes offline.
+   * Returns an unsubscribe function.
+   */
+  addListener(cb: (isConnected: boolean) => void): () => void;
+}
 
 export interface OtelConfig {
   serviceName: string;
@@ -29,8 +64,14 @@ export interface OtelConfig {
   metricExporter?: MetricExporter;
   logExporter?: LogExporter;
   sampleRate?: number;
+  sampler?: Sampler;
+  processors?: SpanProcessor[];
   debug?: boolean;
   storage?: StorageAdapter;
+  // Extra resource attributes merged into the resource (after standard fields).
+  resourceAttributes?: Attributes;
+  // Plug in a connectivity adapter to pause flushing when offline.
+  networkAdapter?: NetworkAdapter;
   // Truncate string attribute values longer than this. Default: 1024.
   maxAttributeStringLength?: number;
   // Dot-notation paths to redact from network captures.
@@ -49,6 +90,8 @@ class OtelSDK {
   private metricExporter_: MetricExporter | undefined;
   private logExporter_: LogExporter | undefined;
   private sensitiveKeys_: string[] = [];
+  private isOnline_ = true;
+  private networkUnsubscribe_: (() => void) | undefined;
   private initialized = false;
 
   init(config: OtelConfig): void {
@@ -64,16 +107,21 @@ class OtelSDK {
     this.metricExporter_ = config.metricExporter;
     this.logExporter_ = config.logExporter;
 
+    // Auto-detect platform fields when not explicitly provided.
+    const osName = config.osName ?? Platform.OS;
+    const osVersion = config.osVersion ?? String(Platform.Version);
+
     this.resource_ = buildResource({
       serviceName: config.serviceName,
       serviceVersion: config.serviceVersion ?? '0.0.0',
-      osName: config.osName ?? '',
-      osVersion: config.osVersion ?? '',
+      osName,
+      osVersion,
       deviceBrand: config.deviceBrand ?? '',
       deviceModel: config.deviceModel ?? '',
       deviceType: config.deviceType ?? '',
       appBuild: config.appBuild ?? '',
       environment: config.environment ?? 'production',
+      extra: config.resourceAttributes,
     });
 
     // If any exporter supports resource/storage injection (e.g. OtlpHttp*Exporter),
@@ -103,15 +151,41 @@ class OtelSDK {
     injectResource(config.logExporter);
     injectStorage(config.exporter);
     injectStorage(config.metricExporter);
+    injectStorage(config.logExporter);
 
     this.tracer_ = new Tracer({
       exporter: config.exporter,
       sampleRate: config.sampleRate,
+      sampler: config.sampler,
+      processors: config.processors,
       getUserAttributes: () => ({ ...this.userAttributes_ }),
     });
 
     this.meter_ = new Meter(config.metricExporter);
     this.logger_ = new OtelLogger(config.logExporter);
+
+    // Wire up connectivity-aware flushing when a NetworkAdapter is supplied.
+    if (config.networkAdapter) {
+      this.networkUnsubscribe_ = config.networkAdapter.addListener(
+        (isConnected) => {
+          this.isOnline_ = isConnected;
+          if (isConnected) {
+            // Flush buffered data immediately when coming back online.
+            this.flush();
+          }
+        }
+      );
+    }
+
+    // Lock the WAL's fetch to the original (pre-patch) implementation so that
+    // OTLP delivery calls are never themselves instrumented — which would cause
+    // infinite recursion once fetch instrumentation is installed below.
+    setFetchImpl(globalThis.fetch);
+
+    // Auto-install fetch instrumentation. Wraps globalThis.fetch to create a
+    // CLIENT span for every app-level HTTP request. The OTLP exporter is immune
+    // because it uses the pre-patch fetch captured above.
+    createFetchInstrumentation(this.tracer_);
 
     // Check for pending crash span and install global error handler
     installErrorInstrumentation({
@@ -169,9 +243,10 @@ class OtelSDK {
   }
 
   // Flush all buffered spans and metrics without tearing down the SDK.
-  // Call this before a JS-initiated restart or when you want to ensure delivery
-  // before a predictable exit (e.g. logout flow, app update prompt).
+  // When a NetworkAdapter is configured, flush is a no-op while offline —
+  // data stays buffered until connectivity is restored.
   flush(): void {
+    if (!this.isOnline_) return;
     this.meter_?.flush();
     const flushExporter = (exp: unknown) => {
       if (exp && typeof exp === 'object' && 'flush' in exp) {
@@ -183,6 +258,13 @@ class OtelSDK {
   }
 
   async shutdown(): Promise<void> {
+    // Remove connectivity listener.
+    this.networkUnsubscribe_?.();
+    this.networkUnsubscribe_ = undefined;
+
+    // Restore the original fetch.
+    uninstallFetchInstrumentation();
+
     // End active screen span
     const current = spanContext.current();
     if (current) {

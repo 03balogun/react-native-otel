@@ -12,6 +12,7 @@ import type { Resource } from '../core/resource';
 import type { ReadonlySpan, SpanExporter } from '../core/span';
 import type { StorageAdapter } from '../instrumentation/errors';
 import { Wal, fetchWithRetry } from './wal';
+import { SDK_VERSION } from '../version';
 
 // ─── OTLP attribute value serialization ──────────────────────────────────────
 
@@ -98,6 +99,8 @@ export class OtlpHttpExporter implements SpanExporter {
     this.timer_ = setInterval(() => {
       this.flush();
     }, interval);
+    // Allow Node.js to exit cleanly in test environments without calling destroy().
+    if (typeof this.timer_.unref === 'function') this.timer_.unref();
   }
 
   // Called by OtelSDK.init() after buildResource() — not part of SpanExporter.
@@ -174,7 +177,7 @@ export class OtlpHttpExporter implements SpanExporter {
           resource: { attributes: resourceAttrs },
           scopeSpans: [
             {
-              scope: { name: 'react-native-otel', version: '0.1.0' },
+              scope: { name: 'react-native-otel', version: SDK_VERSION },
               spans: spans.map((s) => this.toOtlpSpan(s)),
             },
           ],
@@ -199,6 +202,11 @@ export class OtlpHttpExporter implements SpanExporter {
         timeUnixNano: msToNano(event.timestampMs),
         attributes: toOtlpAttributes(event.attributes),
       })),
+      links: span.links.map((link) => ({
+        traceId: link.traceId,
+        spanId: link.spanId,
+        attributes: link.attributes ? toOtlpAttributes(link.attributes) : [],
+      })),
       droppedEventsCount: span.droppedEventsCount,
       status: {
         code: SPAN_STATUS_CODE[span.status] ?? 0,
@@ -218,6 +226,8 @@ const AGGREGATION_TEMPORALITY_CUMULATIVE = 2;
 export interface OtlpHttpMetricExporterOptions {
   endpoint: string;
   headers?: Record<string, string>;
+  // How often to auto-flush buffered metrics in ms. Default: 30_000.
+  flushIntervalMs?: number;
 }
 
 export class OtlpHttpMetricExporter implements MetricExporter {
@@ -225,6 +235,8 @@ export class OtlpHttpMetricExporter implements MetricExporter {
   private readonly headers: Record<string, string>;
   private resource_: Readonly<Resource> | undefined;
   private wal_: Wal<MetricRecord> | undefined;
+  private timer_: ReturnType<typeof setInterval> | undefined;
+  private buffer_: MetricRecord[] = [];
 
   constructor(options: OtlpHttpMetricExporterOptions) {
     this.metricsEndpoint = options.endpoint.replace(/\/$/, '') + '/v1/metrics';
@@ -232,6 +244,13 @@ export class OtlpHttpMetricExporter implements MetricExporter {
       'Content-Type': 'application/json',
       ...options.headers,
     };
+
+    const interval = options.flushIntervalMs ?? 30_000;
+    this.timer_ = setInterval(() => {
+      this.flush();
+    }, interval);
+    // Allow Node.js to exit cleanly in test environments without calling destroy().
+    if (typeof this.timer_.unref === 'function') this.timer_.unref();
   }
 
   setResource(resource: Readonly<Resource>): void {
@@ -255,12 +274,29 @@ export class OtlpHttpMetricExporter implements MetricExporter {
 
   export(metrics: MetricRecord[]): void {
     if (metrics.length === 0) return;
+    this.buffer_.push(...metrics);
+  }
+
+  // Drain buffered metrics and deliver them immediately.
+  // Called by the internal timer and also useful for testing / explicit flush.
+  flush(): void {
+    if (this.buffer_.length === 0) return;
+    const batch = this.buffer_.splice(0);
     if (this.wal_) {
-      const id = this.wal_.write(metrics);
-      this.deliverBatch(metrics, id);
+      const id = this.wal_.write(batch);
+      this.deliverBatch(batch, id);
     } else {
-      this.deliverBatch(metrics, undefined);
+      this.deliverBatch(batch, undefined);
     }
+  }
+
+  // Clear the flush timer and send any remaining buffered metrics.
+  destroy(): void {
+    if (this.timer_ !== undefined) {
+      clearInterval(this.timer_);
+      this.timer_ = undefined;
+    }
+    this.flush();
   }
 
   private deliverBatch(
@@ -358,7 +394,7 @@ export class OtlpHttpMetricExporter implements MetricExporter {
           resource: { attributes: resourceAttrs },
           scopeMetrics: [
             {
-              scope: { name: 'react-native-otel', version: '0.1.0' },
+              scope: { name: 'react-native-otel', version: SDK_VERSION },
               metrics: otlpMetrics,
             },
           ],
@@ -394,6 +430,7 @@ export class OtlpHttpLogExporter implements LogExporter {
   private buffer: LogRecord[] = [];
   private resource_: Readonly<Resource> | undefined;
   private timer_: ReturnType<typeof setInterval> | undefined;
+  private wal_: Wal<LogRecord> | undefined;
 
   constructor(options: OtlpHttpLogExporterOptions) {
     this.logsEndpoint = options.endpoint.replace(/\/$/, '') + '/v1/logs';
@@ -407,10 +444,25 @@ export class OtlpHttpLogExporter implements LogExporter {
     this.timer_ = setInterval(() => {
       this.flush();
     }, interval);
+    // Allow Node.js to exit cleanly in test environments without calling destroy().
+    if (typeof this.timer_.unref === 'function') this.timer_.unref();
   }
 
   setResource(resource: Readonly<Resource>): void {
     this.resource_ = resource;
+  }
+
+  // Called by OtelSDK.init() when a StorageAdapter is configured.
+  setStorage(storage: StorageAdapter): void {
+    this.wal_ = new Wal<LogRecord>(storage, '@react-native-otel/wal/logs');
+    this.replayWal();
+  }
+
+  private replayWal(): void {
+    if (!this.wal_) return;
+    for (const batch of this.wal_.readAll()) {
+      this.deliverBatch(batch.data as LogRecord[], batch.id);
+    }
   }
 
   export(logs: LogRecord[]): void {
@@ -423,7 +475,12 @@ export class OtlpHttpLogExporter implements LogExporter {
   flush(): void {
     if (this.buffer.length === 0) return;
     const batch = this.buffer.splice(0);
-    this.send(batch);
+    if (this.wal_) {
+      const id = this.wal_.write(batch);
+      this.deliverBatch(batch, id);
+    } else {
+      this.deliverBatch(batch, undefined);
+    }
   }
 
   destroy(): void {
@@ -434,7 +491,19 @@ export class OtlpHttpLogExporter implements LogExporter {
     this.flush();
   }
 
-  private send(logs: LogRecord[]): void {
+  private deliverBatch(logs: LogRecord[], walId: string | undefined): void {
+    this.send(logs)
+      .then((success) => {
+        if (success && walId !== undefined) {
+          this.wal_?.delete(walId);
+        }
+      })
+      .catch(() => {
+        // Leave in WAL for next session
+      });
+  }
+
+  private send(logs: LogRecord[]): Promise<boolean> {
     const resourceAttrs = this.resource_
       ? toOtlpAttributes(this.resource_ as unknown as Record<string, unknown>)
       : [];
@@ -445,7 +514,7 @@ export class OtlpHttpLogExporter implements LogExporter {
           resource: { attributes: resourceAttrs },
           scopeLogs: [
             {
-              scope: { name: 'react-native-otel', version: '0.1.0' },
+              scope: { name: 'react-native-otel', version: SDK_VERSION },
               logRecords: logs.map((log) => ({
                 timeUnixNano: msToNano(log.timestampMs),
                 severityNumber: LOG_SEVERITY_NUMBER[log.severity] ?? 9,
@@ -461,10 +530,10 @@ export class OtlpHttpLogExporter implements LogExporter {
       ],
     });
 
-    fetchWithRetry(this.logsEndpoint, {
+    return fetchWithRetry(this.logsEndpoint, {
       method: 'POST',
       headers: this.headers,
       body,
-    }).catch(() => {});
+    });
   }
 }

@@ -14,6 +14,12 @@ export interface SpanExporter {
   export(spans: ReadonlySpan[]): void;
 }
 
+// Forward-declared to avoid circular dep with core/processor.ts
+export interface SpanProcessor {
+  onStart?(span: Span): void;
+  onEnd(span: ReadonlySpan): void;
+}
+
 export type SpanKind =
   | 'INTERNAL'
   | 'CLIENT'
@@ -28,6 +34,13 @@ export interface SpanEvent {
   attributes: Attributes;
 }
 
+/** A causal link to a span in a different (or the same) trace. */
+export interface SpanLink {
+  traceId: string;
+  spanId: string;
+  attributes?: Attributes;
+}
+
 export interface ReadonlySpan {
   readonly traceId: string;
   readonly spanId: string;
@@ -38,6 +51,7 @@ export interface ReadonlySpan {
   readonly endTimeMs: number | undefined;
   readonly attributes: Readonly<Attributes>;
   readonly events: readonly SpanEvent[];
+  readonly links: readonly SpanLink[];
   readonly droppedEventsCount: number;
   readonly status: SpanStatus;
   readonly statusMessage: string | undefined;
@@ -63,19 +77,23 @@ export class Span implements ReadonlySpan {
   // Mutable plain object — setAttribute writes directly, no full clone.
   attributes: Attributes;
   events: SpanEvent[] = [];
+  links: SpanLink[] = [];
   droppedEventsCount = 0;
   status: SpanStatus = 'UNSET';
   statusMessage: string | undefined = undefined;
 
   private exporter: SpanExporter | undefined;
+  private processor: SpanProcessor | undefined;
 
   constructor(params: {
     name: string;
     kind?: SpanKind;
     attributes?: Attributes;
+    links?: SpanLink[];
     // Pass the full parent context so the child inherits the same traceId.
     parent?: SpanContext;
     exporter?: SpanExporter;
+    processor?: SpanProcessor;
   }) {
     this.traceId = params.parent?.traceId ?? generateTraceId();
     this.spanId = generateSpanId();
@@ -86,7 +104,10 @@ export class Span implements ReadonlySpan {
     this.attributes = params.attributes
       ? sanitizeAttributes(params.attributes)
       : {};
+    this.links = params.links ?? [];
     this.exporter = params.exporter;
+    this.processor = params.processor;
+    this.processor?.onStart?.(this);
   }
 
   setAttribute(key: string, value: Attributes[string]): void {
@@ -133,7 +154,12 @@ export class Span implements ReadonlySpan {
     if (this.status === 'UNSET') {
       this.status = 'OK';
     }
-    this.exporter?.export([this]);
+    // Processor takes precedence over direct exporter (processor wraps the exporter).
+    if (this.processor) {
+      this.processor.onEnd(this);
+    } else {
+      this.exporter?.export([this]);
+    }
   }
 }
 
@@ -149,6 +175,7 @@ export class NoopSpan implements ReadonlySpan {
   readonly endTimeMs = undefined;
   readonly attributes = {};
   readonly events: SpanEvent[] = [];
+  readonly links: SpanLink[] = [];
   readonly droppedEventsCount = 0;
   readonly status: SpanStatus = 'UNSET';
   readonly statusMessage = undefined;

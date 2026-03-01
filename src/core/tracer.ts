@@ -5,13 +5,21 @@ import {
 } from '@opentelemetry/semantic-conventions';
 
 import type { Attributes } from './attributes';
-import type { SpanContext, SpanExporter, SpanKind } from './span';
+import type {
+  SpanContext,
+  SpanExporter,
+  SpanKind,
+  SpanLink,
+  SpanProcessor,
+} from './span';
 import { Span, NoopSpan } from './span';
+import type { Sampler } from './sampler';
 import { spanContext, spanContextInternal } from '../context/span-context';
 
-interface SpanOptions {
+export interface SpanOptions {
   kind?: SpanKind;
   attributes?: Attributes;
+  links?: SpanLink[];
   // Inherit traceId from this parent. Omit to use the current active span.
   // Pass null to force a new root trace.
   parent?: SpanContext | null;
@@ -20,38 +28,65 @@ interface SpanOptions {
 export class Tracer {
   private exporter: SpanExporter | undefined;
   private sampleRate: number;
+  private sampler: Sampler | undefined;
+  private processors: SpanProcessor[];
   private getUserAttributes: () => Attributes;
 
   constructor(params: {
     exporter?: SpanExporter;
     sampleRate?: number;
+    sampler?: Sampler;
+    processors?: SpanProcessor[];
     getUserAttributes: () => Attributes;
   }) {
     this.exporter = params.exporter;
     this.sampleRate = params.sampleRate ?? 1.0;
+    this.sampler = params.sampler;
+    this.processors = params.processors ?? [];
     this.getUserAttributes = params.getUserAttributes;
   }
 
   // Create a span without making it the active context.
   // Use startActiveSpan() when you want sub-operations to auto-parent.
   startSpan(name: string, options?: SpanOptions): Span | NoopSpan {
-    if (this.sampleRate < 1.0 && Math.random() > this.sampleRate) {
-      return new NoopSpan();
-    }
-
     // Resolve parent: explicit > current active span > none (new root trace)
     const parent: SpanContext | undefined =
       options?.parent !== undefined
         ? options.parent ?? undefined
         : spanContext.current() ?? undefined;
 
+    // Sampler takes precedence over legacy sampleRate when provided.
+    if (this.sampler) {
+      if (!this.sampler.shouldSample(name, parent, options?.attributes)) {
+        return new NoopSpan();
+      }
+    } else if (this.sampleRate < 1.0 && Math.random() > this.sampleRate) {
+      return new NoopSpan();
+    }
+
+    // Build a composite processor if multiple processors are registered,
+    // otherwise use a single processor or fall back to direct exporter.
+    const processor: SpanProcessor | undefined =
+      this.processors.length > 1
+        ? {
+            onStart: (s) => {
+              for (const p of this.processors) p.onStart?.(s);
+            },
+            onEnd: (s) => {
+              for (const p of this.processors) p.onEnd(s);
+            },
+          }
+        : this.processors[0];
+
     const userAttrs = this.getUserAttributes();
     return new Span({
       name,
       kind: options?.kind,
       attributes: { ...userAttrs, ...options?.attributes },
+      links: options?.links,
       parent,
-      exporter: this.exporter,
+      exporter: processor ? undefined : this.exporter,
+      processor,
     });
   }
 

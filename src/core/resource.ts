@@ -11,6 +11,8 @@ import {
   ATTR_OS_VERSION,
 } from '@opentelemetry/semantic-conventions/incubating';
 
+import type { Attributes } from './attributes';
+
 export interface Resource {
   [ATTR_SERVICE_NAME]: string; // 'service.name'
   [ATTR_SERVICE_VERSION]: string; // 'service.version'
@@ -21,6 +23,7 @@ export interface Resource {
   'device.type': string | number; // custom — no OTel equivalent
   [ATTR_APP_BUILD_ID]: string; // 'app.build_id'
   [ATTR_DEPLOYMENT_ENVIRONMENT_NAME]: string; // 'deployment.environment.name'
+  [key: string]: unknown; // extra user-supplied resource attributes
 }
 
 // Populated at init time from device/app info passed in by the caller.
@@ -35,8 +38,11 @@ export function buildResource(params: {
   deviceType: string | number;
   appBuild: string;
   environment: string;
+  // Optional extra attributes merged last (user-supplied overrides nothing standard).
+  extra?: Attributes;
 }): Readonly<Resource> {
   return Object.freeze({
+    ...params.extra,
     [ATTR_SERVICE_NAME]: params.serviceName,
     [ATTR_SERVICE_VERSION]: params.serviceVersion,
     [ATTR_OS_NAME]: params.osName,

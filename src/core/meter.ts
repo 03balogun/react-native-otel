@@ -12,7 +12,36 @@ const DEFAULT_HISTOGRAM_BOUNDARIES = [
   0, 5, 10, 25, 50, 75, 100, 250, 500, 1000,
 ];
 
+// Cap for the sanitized-attributes memoization cache to prevent memory leaks
+// when attributes have high cardinality.
+const ATTR_CACHE_MAX = 100;
+
+/**
+ * Memoized attribute sanitization: avoids calling sanitizeAttributes() on
+ * every Counter.add() / Gauge.set() call for the same attribute set.
+ */
+function cachedSanitize(
+  cache: Map<string, Attributes>,
+  attrs: Attributes | undefined
+): Attributes {
+  if (!attrs) return {};
+  const key = JSON.stringify(attrs);
+  let sanitized = cache.get(key);
+  if (sanitized === undefined) {
+    sanitized = sanitizeAttributes(attrs);
+    if (cache.size >= ATTR_CACHE_MAX) {
+      // Evict the oldest entry to cap memory usage.
+      const firstKey = cache.keys().next().value;
+      if (firstKey !== undefined) cache.delete(firstKey);
+    }
+    cache.set(key, sanitized);
+  }
+  return sanitized;
+}
+
 export class Counter {
+  private attrCache = new Map<string, Attributes>();
+
   constructor(
     private name: string,
     private pushToBuffer: (record: MetricRecord) => void
@@ -24,7 +53,7 @@ export class Counter {
       name: this.name,
       value,
       timestampMs: now(),
-      attributes: attrs ? sanitizeAttributes(attrs) : {},
+      attributes: cachedSanitize(this.attrCache, attrs),
     });
   }
 }
@@ -119,6 +148,8 @@ export class Histogram {
 }
 
 export class Gauge {
+  private attrCache = new Map<string, Attributes>();
+
   constructor(
     private name: string,
     private pushToBuffer: (record: MetricRecord) => void
@@ -130,7 +161,7 @@ export class Gauge {
       name: this.name,
       value,
       timestampMs: now(),
-      attributes: attrs ? sanitizeAttributes(attrs) : {},
+      attributes: cachedSanitize(this.attrCache, attrs),
     });
   }
 }

@@ -173,13 +173,42 @@ export function createAxiosInstrumentation(
         if (serialized) span.setAttribute('http.request.body', serialized);
       }
 
-      // W3C Trace Context: inject traceparent header so the backend can continue
-      // the trace. Only injected for sampled (real) spans — NoopSpan has empty IDs.
+      // W3C Trace Context: inject traceparent + tracestate + baggage headers.
+      // Only injected for sampled (real) spans — NoopSpan has empty IDs.
       if (span instanceof Span) {
-        // flags: 01 = sampled
+        const additionalHeaders: Record<string, string> = {
+          // flags: 01 = sampled
+          traceparent: `00-${span.traceId}-${span.spanId}-01`,
+        };
+
+        // Forward tracestate from the current active span if available.
+        const activeSpan = spanContext.current();
+        if (activeSpan && 'attributes' in activeSpan) {
+          const tracestate = (
+            activeSpan as { attributes: Record<string, unknown> }
+          ).attributes.tracestate;
+          if (typeof tracestate === 'string') {
+            additionalHeaders.tracestate = tracestate;
+          }
+        }
+
+        // Build a W3C baggage header from span attributes prefixed with 'baggage.'.
+        const baggageEntries: string[] = [];
+        for (const [key, val] of Object.entries(span.attributes)) {
+          if (key.startsWith('baggage.') && typeof val === 'string') {
+            const baggageKey = key.slice('baggage.'.length);
+            baggageEntries.push(
+              `${encodeURIComponent(baggageKey)}=${encodeURIComponent(val)}`
+            );
+          }
+        }
+        if (baggageEntries.length > 0) {
+          additionalHeaders.baggage = baggageEntries.join(',');
+        }
+
         config.headers = {
           ...(config.headers ?? {}),
-          traceparent: `00-${span.traceId}-${span.spanId}-01`,
+          ...additionalHeaders,
         };
       }
 

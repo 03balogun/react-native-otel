@@ -1,4 +1,8 @@
-import { OtlpHttpMetricExporter } from '../exporters/otlp-http-exporter';
+import {
+  OtlpHttpMetricExporter,
+  OtlpHttpExporter,
+  OtlpHttpLogExporter,
+} from '../exporters/otlp-http-exporter';
 import type {
   MetricRecord,
   HistogramRecord,
@@ -66,6 +70,7 @@ describe('OtlpHttpMetricExporter', () => {
   it('sends counter as OTLP sum data point', async () => {
     const exporter = makeExporter();
     exporter.export([counter('hits', 42)]);
+    exporter.flush();
     await Promise.resolve(); // flush microtasks
 
     expect(fetchCalls).toHaveLength(1);
@@ -80,6 +85,7 @@ describe('OtlpHttpMetricExporter', () => {
   it('sends gauge as OTLP gauge data point', async () => {
     const exporter = makeExporter();
     exporter.export([gauge('cpu', 0.75)]);
+    exporter.flush();
     await Promise.resolve();
 
     const body = JSON.parse(fetchCalls[0]!.body);
@@ -92,6 +98,7 @@ describe('OtlpHttpMetricExporter', () => {
   it('sends histogram with correct count, sum, bucketCounts, and explicitBounds', async () => {
     const exporter = makeExporter();
     exporter.export([histogram('latency', 3, 165, [50, 100], [1, 1, 1])]);
+    exporter.flush();
     await Promise.resolve();
 
     const body = JSON.parse(fetchCalls[0]!.body);
@@ -118,6 +125,7 @@ describe('OtlpHttpMetricExporter', () => {
   it('groups multiple records of the same name into one OTLP metric', async () => {
     const exporter = makeExporter();
     exporter.export([counter('req', 1), counter('req', 2)]);
+    exporter.flush();
     await Promise.resolve();
 
     const body = JSON.parse(fetchCalls[0]!.body);
@@ -152,6 +160,7 @@ describe('OtlpHttpMetricExporter WAL', () => {
     exporter.setStorage(storage);
 
     exporter.export([counter('c', 1)]);
+    exporter.flush(); // drain buffer → write WAL + deliver
     await new Promise((r) => setTimeout(r, 10)); // allow async delivery
 
     const wal = new Wal(storage, '@react-native-otel/wal/metrics');
@@ -167,6 +176,7 @@ describe('OtlpHttpMetricExporter WAL', () => {
     exporter.setStorage(storage);
 
     exporter.export([counter('c', 1)]);
+    exporter.flush(); // drain buffer → write WAL + start delivery
     // Wait for all retries (3 * up to 2s each is too long; use fake timers or just check WAL exists)
     await new Promise((r) => setTimeout(r, 20));
 
@@ -193,5 +203,152 @@ describe('OtlpHttpMetricExporter WAL', () => {
     expect(fetchCalls.length).toBeGreaterThan(0);
     const body = JSON.parse(fetchCalls[0]!.body);
     expect(body.resourceMetrics[0].scopeMetrics[0].metrics[0].name).toBe('c');
+  });
+});
+
+// ─── Snapshot tests ───────────────────────────────────────────────────────────
+// These snapshots lock down the exact OTLP JSON wire format so regressions
+// surface immediately.
+
+describe('OTLP snapshot tests', () => {
+  beforeEach(() => {
+    fetchCalls.length = 0;
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2024-01-01T00:00:00.000Z'));
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('counter OTLP body matches snapshot', async () => {
+    const exporter = new OtlpHttpMetricExporter({
+      endpoint: 'http://localhost:4318',
+    });
+    exporter.export([
+      {
+        type: 'counter',
+        name: 'page_views',
+        value: 10,
+        timestampMs: 1_000_000,
+        attributes: { 'screen.name': 'Home' },
+      },
+    ]);
+    exporter.flush();
+    await Promise.resolve();
+
+    expect(fetchCalls).toHaveLength(1);
+    const body = JSON.parse(fetchCalls[0]!.body);
+    // Normalize dynamic fields before snapshot.
+    body.resourceMetrics[0].scopeMetrics[0].scope.version = '<version>';
+    expect(body).toMatchSnapshot();
+  });
+
+  it('gauge OTLP body matches snapshot', async () => {
+    const exporter = new OtlpHttpMetricExporter({
+      endpoint: 'http://localhost:4318',
+    });
+    exporter.export([
+      {
+        type: 'gauge',
+        name: 'memory_mb',
+        value: 256,
+        timestampMs: 2_000_000,
+        attributes: {},
+      },
+    ]);
+    exporter.flush();
+    await Promise.resolve();
+
+    const body = JSON.parse(fetchCalls[0]!.body);
+    body.resourceMetrics[0].scopeMetrics[0].scope.version = '<version>';
+    expect(body).toMatchSnapshot();
+  });
+
+  it('histogram OTLP body matches snapshot', async () => {
+    const exporter = new OtlpHttpMetricExporter({
+      endpoint: 'http://localhost:4318',
+    });
+    exporter.export([
+      {
+        type: 'histogram',
+        name: 'api_latency',
+        count: 5,
+        sum: 450,
+        bucketBoundaries: [100, 200, 500],
+        bucketCounts: [2, 1, 1, 1],
+        timestampMs: 3_000_000,
+        attributes: { endpoint: '/api/users' },
+      },
+    ]);
+    exporter.flush();
+    await Promise.resolve();
+
+    const body = JSON.parse(fetchCalls[0]!.body);
+    body.resourceMetrics[0].scopeMetrics[0].scope.version = '<version>';
+    expect(body).toMatchSnapshot();
+  });
+
+  it('span OTLP body matches snapshot', async () => {
+    const spanExporter = new OtlpHttpExporter({
+      endpoint: 'http://localhost:4318',
+    });
+    spanExporter.export([
+      {
+        traceId: 'aabbccdd11223344aabbccdd11223344',
+        spanId: '1122334455667788',
+        parentSpanId: undefined,
+        name: 'screen.Home',
+        kind: 'INTERNAL',
+        startTimeMs: 1_000_000,
+        endTimeMs: 1_001_000,
+        attributes: { 'screen.name': 'Home' },
+        events: [
+          {
+            name: 'button_tap',
+            timestampMs: 1_000_500,
+            attributes: { 'button.id': 'submit' },
+          },
+        ],
+        links: [
+          {
+            traceId: 'ffffffffffffffffffffffffffffffff',
+            spanId: 'aaaaaaaaaaaaaaaa',
+            attributes: { 'link.reason': 'caused_by' },
+          },
+        ],
+        droppedEventsCount: 0,
+        status: 'OK',
+        statusMessage: undefined,
+      },
+    ]);
+    spanExporter.flush();
+    await Promise.resolve();
+
+    const body = JSON.parse(fetchCalls[0]!.body);
+    body.resourceSpans[0].scopeSpans[0].scope.version = '<version>';
+    expect(body).toMatchSnapshot();
+  });
+
+  it('log OTLP body matches snapshot', async () => {
+    const logExporter = new OtlpHttpLogExporter({
+      endpoint: 'http://localhost:4318',
+    });
+    logExporter.export([
+      {
+        timestampMs: 1_000_000,
+        severity: 'INFO',
+        body: 'User logged in',
+        traceId: 'aabbccdd11223344aabbccdd11223344',
+        spanId: '1122334455667788',
+        attributes: { 'user.id': 'u123' },
+      },
+    ]);
+    logExporter.flush();
+    await Promise.resolve();
+
+    const body = JSON.parse(fetchCalls[0]!.body);
+    body.resourceLogs[0].scopeLogs[0].scope.version = '<version>';
+    expect(body).toMatchSnapshot();
   });
 });

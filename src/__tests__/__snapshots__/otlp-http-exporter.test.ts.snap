@@ -1,0 +1,244 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`OTLP snapshot tests counter OTLP body matches snapshot 1`] = `
+{
+  "resourceMetrics": [
+    {
+      "resource": {
+        "attributes": [],
+      },
+      "scopeMetrics": [
+        {
+          "metrics": [
+            {
+              "name": "page_views",
+              "sum": {
+                "aggregationTemporality": 2,
+                "dataPoints": [
+                  {
+                    "asDouble": 10,
+                    "attributes": [
+                      {
+                        "key": "screen.name",
+                        "value": {
+                          "stringValue": "Home",
+                        },
+                      },
+                    ],
+                    "startTimeUnixNano": "1000000000000",
+                    "timeUnixNano": "1000000000000",
+                  },
+                ],
+                "isMonotonic": true,
+              },
+            },
+          ],
+          "scope": {
+            "name": "react-native-otel",
+            "version": "<version>",
+          },
+        },
+      ],
+    },
+  ],
+}
+`;
+
+exports[`OTLP snapshot tests gauge OTLP body matches snapshot 1`] = `
+{
+  "resourceMetrics": [
+    {
+      "resource": {
+        "attributes": [],
+      },
+      "scopeMetrics": [
+        {
+          "metrics": [
+            {
+              "gauge": {
+                "dataPoints": [
+                  {
+                    "asDouble": 256,
+                    "attributes": [],
+                    "timeUnixNano": "2000000000000",
+                  },
+                ],
+              },
+              "name": "memory_mb",
+            },
+          ],
+          "scope": {
+            "name": "react-native-otel",
+            "version": "<version>",
+          },
+        },
+      ],
+    },
+  ],
+}
+`;
+
+exports[`OTLP snapshot tests histogram OTLP body matches snapshot 1`] = `
+{
+  "resourceMetrics": [
+    {
+      "resource": {
+        "attributes": [],
+      },
+      "scopeMetrics": [
+        {
+          "metrics": [
+            {
+              "histogram": {
+                "aggregationTemporality": 1,
+                "dataPoints": [
+                  {
+                    "attributes": [
+                      {
+                        "key": "endpoint",
+                        "value": {
+                          "stringValue": "/api/users",
+                        },
+                      },
+                    ],
+                    "bucketCounts": [
+                      "2",
+                      "1",
+                      "1",
+                      "1",
+                    ],
+                    "count": "5",
+                    "explicitBounds": [
+                      100,
+                      200,
+                      500,
+                    ],
+                    "startTimeUnixNano": "3000000000000",
+                    "sum": 450,
+                    "timeUnixNano": "3000000000000",
+                  },
+                ],
+              },
+              "name": "api_latency",
+            },
+          ],
+          "scope": {
+            "name": "react-native-otel",
+            "version": "<version>",
+          },
+        },
+      ],
+    },
+  ],
+}
+`;
+
+exports[`OTLP snapshot tests log OTLP body matches snapshot 1`] = `
+{
+  "resourceLogs": [
+    {
+      "resource": {
+        "attributes": [],
+      },
+      "scopeLogs": [
+        {
+          "logRecords": [
+            {
+              "attributes": [
+                {
+                  "key": "user.id",
+                  "value": {
+                    "stringValue": "u123",
+                  },
+                },
+              ],
+              "body": {
+                "stringValue": "User logged in",
+              },
+              "severityNumber": 9,
+              "severityText": "INFO",
+              "spanId": "1122334455667788",
+              "timeUnixNano": "1000000000000",
+              "traceId": "aabbccdd11223344aabbccdd11223344",
+            },
+          ],
+          "scope": {
+            "name": "react-native-otel",
+            "version": "<version>",
+          },
+        },
+      ],
+    },
+  ],
+}
+`;
+
+exports[`OTLP snapshot tests span OTLP body matches snapshot 1`] = `
+{
+  "resourceSpans": [
+    {
+      "resource": {
+        "attributes": [],
+      },
+      "scopeSpans": [
+        {
+          "scope": {
+            "name": "react-native-otel",
+            "version": "<version>",
+          },
+          "spans": [
+            {
+              "attributes": [
+                {
+                  "key": "screen.name",
+                  "value": {
+                    "stringValue": "Home",
+                  },
+                },
+              ],
+              "droppedEventsCount": 0,
+              "endTimeUnixNano": "1001000000000",
+              "events": [
+                {
+                  "attributes": [
+                    {
+                      "key": "button.id",
+                      "value": {
+                        "stringValue": "submit",
+                      },
+                    },
+                  ],
+                  "name": "button_tap",
+                  "timeUnixNano": "1000500000000",
+                },
+              ],
+              "kind": 1,
+              "links": [
+                {
+                  "attributes": [
+                    {
+                      "key": "link.reason",
+                      "value": {
+                        "stringValue": "caused_by",
+                      },
+                    },
+                  ],
+                  "spanId": "aaaaaaaaaaaaaaaa",
+                  "traceId": "ffffffffffffffffffffffffffffffff",
+                },
+              ],
+              "name": "screen.Home",
+              "spanId": "1122334455667788",
+              "startTimeUnixNano": "1000000000000",
+              "status": {
+                "code": 1,
+              },
+              "traceId": "aabbccdd11223344aabbccdd11223344",
+            },
+          ],
+        },
+      ],
+    },
+  ],
+}
+`;

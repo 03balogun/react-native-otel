@@ -1,6 +1,6 @@
 // SDK
 export { otel } from './sdk';
-export type { OtelConfig } from './sdk';
+export type { OtelConfig, NetworkAdapter } from './sdk';
 
 // Core
 export { Span, NoopSpan } from './core/span';
@@ -8,15 +8,32 @@ export type {
   SpanKind,
   SpanStatus,
   SpanEvent,
+  SpanLink,
   ReadonlySpan,
+  SpanProcessor,
 } from './core/span';
 export { Tracer } from './core/tracer';
+export type { SpanOptions } from './core/tracer';
 export { Meter, Counter, Histogram, Gauge } from './core/meter';
 export type { HistogramOptions } from './core/meter';
 export { OtelLogger } from './core/log-record';
 export type { LogSeverity } from './core/log-record';
 export type { Attributes, AttributeValue } from './core/attributes';
 export type { Resource } from './core/resource';
+
+// Samplers
+export type { Sampler } from './core/sampler';
+export {
+  AlwaysOnSampler,
+  AlwaysOffSampler,
+  TraceIdRatioSampler,
+} from './core/sampler';
+
+// Processors
+export { SimpleSpanProcessor, NoopSpanProcessor } from './core/processor';
+
+// Version
+export { SDK_VERSION } from './version';
 
 // Context
 export { spanContext } from './context/span-context';
@@ -45,6 +62,11 @@ export type {
   OtlpHttpMetricExporterOptions,
   OtlpHttpLogExporterOptions,
 } from './exporters/otlp-http-exporter';
+export {
+  MultiSpanExporter,
+  MultiMetricExporter,
+  MultiLogExporter,
+} from './exporters/multi-exporter';
 
 // Instrumentation
 export { createNavigationInstrumentation } from './instrumentation/navigation';
@@ -58,6 +80,17 @@ export type {
 } from './instrumentation/network';
 export { installErrorInstrumentation } from './instrumentation/errors';
 export type { StorageAdapter } from './instrumentation/errors';
+export {
+  createFetchInstrumentation,
+  uninstallFetchInstrumentation,
+} from './instrumentation/fetch';
+export type { FetchInstrumentationOptions } from './instrumentation/fetch';
+export { installStartupInstrumentation } from './instrumentation/startup';
+export {
+  createLinkingInstrumentation,
+  recordPushNotification,
+} from './instrumentation/linking';
+export type { LinkingInstrumentation } from './instrumentation/linking';
 
 // React
 export { OtelProvider, OtelContext } from './react/OtelProvider';
