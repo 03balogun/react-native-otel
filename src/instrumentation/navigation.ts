@@ -1,4 +1,4 @@
-import { ATTR_APP_SCREEN_NAME } from '@opentelemetry/semantic-conventions/incubating';
+import { ATTR_APP_SCREEN_NAME } from '../semantic-conventions';
 
 import { spanContext } from '../context/span-context';
 import { Span, NoopSpan } from '../core/span';

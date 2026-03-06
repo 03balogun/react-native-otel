@@ -9,7 +9,7 @@ import {
   ATTR_DEVICE_MODEL_NAME,
   ATTR_OS_NAME,
   ATTR_OS_VERSION,
-} from '@opentelemetry/semantic-conventions/incubating';
+} from '../semantic-conventions';
 
 import type { Attributes } from './attributes';
 
