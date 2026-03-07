@@ -189,6 +189,14 @@ otel.init({
     'response.token',
   ],
 
+  // ─── Fetch instrumentation options ───────────────────────────
+  fetchOptions: {
+    captureRequestBody: true,
+    captureResponseBody: true,
+    sensitiveKeys: ['body.password', 'response.token'],
+    ignoreUrls: ['analytics.internal.com'],
+  },
+
   // ─── Persistence ─────────────────────────────────────────────
   storage: {
     setSync: (key, value) => MMKVStorage.set(key, value),
@@ -221,6 +229,7 @@ otel.init({
 | `networkAdapter` | `NetworkAdapter` | `undefined` | Connectivity adapter for pause-on-offline flushing. |
 | `maxAttributeStringLength` | `number` | `1024` | Truncate attribute strings longer than this. |
 | `sensitiveKeys` | `string[]` | `[]` | Dot-notation paths to redact from network captures. |
+| `fetchOptions` | `FetchInstrumentationOptions` | `undefined` | Options for the auto-installed fetch instrumentation (see [Network (fetch)](#network-fetch)). |
 | `storage` | `StorageAdapter` | `undefined` | Synchronous key/value store for WAL and crash persistence. |
 
 ---
@@ -313,7 +322,39 @@ The following W3C headers are injected automatically on every sampled request:
 
 The OTLP exporter's own delivery calls are immune — the SDK snapshots the original `fetch` before installing the instrumentation, so there is no infinite recursion.
 
-If you need to opt out:
+#### Capturing request and response bodies
+
+Pass `fetchOptions` to `otel.init()` to enable body capture:
+
+```ts
+otel.init({
+  serviceName: 'my-app',
+  exporter: new OtlpHttpExporter({ endpoint: '...', headers: { authorization: 'Bearer ...' } }),
+  fetchOptions: {
+    captureRequestBody: true,   // adds http.request.body span attribute
+    captureResponseBody: true,  // adds http.response.body span attribute
+    // Redact specific fields from captured bodies (dot-notation):
+    sensitiveKeys: ['body.password', 'body.cardNumber', 'response.token'],
+    // Skip instrumentation entirely for these URL substrings:
+    ignoreUrls: ['analytics.internal.com'],
+  },
+});
+```
+
+Body capture details:
+- **Request body** — read from `fetch`'s `init.body`. Only JSON strings and plain objects are captured; `FormData`, `Blob`, `ArrayBuffer`, and `ReadableStream` are skipped.
+- **Response body** — the response is cloned before reading so the caller's stream is unaffected. Only JSON responses are captured; non-JSON text is skipped.
+- Both options are `false` by default. Enabling them adds a small overhead per request (a response clone + text read for `captureResponseBody`).
+
+#### W3C trace propagation
+
+A `traceparent` header is injected automatically on every sampled request:
+
+```
+traceparent: 00-{traceId}-{spanId}-01
+```
+
+#### Opt out
 
 ```ts
 import { uninstallFetchInstrumentation } from 'react-native-otel';

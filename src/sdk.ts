@@ -22,6 +22,7 @@ import {
   createFetchInstrumentation,
   uninstallFetchInstrumentation,
 } from './instrumentation/fetch';
+import type { FetchInstrumentationOptions } from './instrumentation/fetch';
 import { setFetchImpl } from './exporters/wal';
 
 /**
@@ -78,6 +79,8 @@ export interface OtelConfig {
   // Sections: header, body, param, response
   // Examples: ['header.authorization', 'body.password', 'response.token']
   sensitiveKeys?: string[];
+  // Options forwarded to the auto-installed fetch instrumentation.
+  fetchOptions?: FetchInstrumentationOptions;
 }
 
 class OtelSDK {
@@ -185,7 +188,7 @@ class OtelSDK {
     // Auto-install fetch instrumentation. Wraps globalThis.fetch to create a
     // CLIENT span for every app-level HTTP request. The OTLP exporter is immune
     // because it uses the pre-patch fetch captured above.
-    createFetchInstrumentation(this.tracer_);
+    createFetchInstrumentation(this.tracer_, config.fetchOptions);
 
     // Check for pending crash span and install global error handler
     installErrorInstrumentation({

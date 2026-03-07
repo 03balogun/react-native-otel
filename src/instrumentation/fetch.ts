@@ -12,7 +12,68 @@ export interface FetchInstrumentationOptions {
   // URL substrings to skip (e.g. your own OTLP endpoint to avoid recursion).
   ignoreUrls?: string[];
   // Attribute keys to redact from request/response (same dot-notation as Axios).
+  // Sections: body.{key}, response.{key}
+  // Example: ['body.password', 'response.token']
   sensitiveKeys?: string[];
+  // Capture the request body as http.request.body span attribute. Default: false.
+  captureRequestBody?: boolean;
+  // Capture the response body as http.response.body span attribute. Default: false.
+  captureResponseBody?: boolean;
+}
+
+// ─── Body capture helpers ─────────────────────────────────────────────────────
+
+function leafKeysForSection(section: string, paths: string[]): Set<string> {
+  const prefix = `${section}.`;
+  const result = new Set<string>();
+  for (const path of paths) {
+    if (path.toLowerCase().startsWith(prefix)) {
+      result.add(path.slice(prefix.length).toLowerCase());
+    }
+  }
+  return result;
+}
+
+function redactObject(
+  obj: Record<string, unknown>,
+  sensitive: Set<string>
+): Record<string, unknown> {
+  if (sensitive.size === 0) return obj;
+  const result: Record<string, unknown> = {};
+  for (const key of Object.keys(obj)) {
+    result[key] = sensitive.has(key.toLowerCase()) ? '[REDACTED]' : obj[key];
+  }
+  return result;
+}
+
+function normalizeBody(data: unknown): Record<string, unknown> | undefined {
+  if (data === null || data === undefined) return undefined;
+  if (typeof data === 'object' && !Array.isArray(data)) {
+    return data as Record<string, unknown>;
+  }
+  if (typeof data === 'string') {
+    try {
+      const parsed: unknown = JSON.parse(data);
+      if (
+        parsed !== null &&
+        typeof parsed === 'object' &&
+        !Array.isArray(parsed)
+      ) {
+        return parsed as Record<string, unknown>;
+      }
+    } catch {
+      // not JSON — skip
+    }
+  }
+  return undefined;
+}
+
+function toJsonAttr(obj: Record<string, unknown>): string | undefined {
+  try {
+    return JSON.stringify(obj);
+  } catch {
+    return undefined;
+  }
 }
 
 // Map from internal ID → active span, mirroring the Axios instrumentation pattern.
@@ -38,6 +99,12 @@ export function createFetchInstrumentation(
   }
 
   const ignoreUrls = options?.ignoreUrls ?? [];
+  const paths = (options?.sensitiveKeys ?? []).map((k) => k.toLowerCase());
+  const sensitiveBody = leafKeysForSection('body', paths);
+  const sensitiveResponse = leafKeysForSection('response', paths);
+  const captureRequestBody = options?.captureRequestBody ?? false;
+  const captureResponseBody = options?.captureResponseBody ?? false;
+
   originalFetch = globalThis.fetch;
   installed = true;
 
@@ -80,6 +147,16 @@ export function createFetchInstrumentation(
       },
     });
 
+    // Capture request body (string / JSON only — Blob/FormData are skipped).
+    if (captureRequestBody && init?.body !== undefined && init.body !== null) {
+      const normalized = normalizeBody(init.body);
+      if (normalized) {
+        const redacted = redactObject(normalized, sensitiveBody);
+        const serialized = toJsonAttr(redacted);
+        if (serialized) span.setAttribute('http.request.body', serialized);
+      }
+    }
+
     // Inject W3C traceparent header for sampled spans.
     let patchedInit = init;
     if (span instanceof Span) {
@@ -103,6 +180,22 @@ export function createFetchInstrumentation(
     try {
       const response = await originalFetch!(input, patchedInit);
       span.setAttribute(ATTR_HTTP_RESPONSE_STATUS_CODE, response.status);
+
+      // Capture response body — clone so the caller's stream is unaffected.
+      if (captureResponseBody) {
+        try {
+          const text = await response.clone().text();
+          const normalized = normalizeBody(text);
+          if (normalized) {
+            const redacted = redactObject(normalized, sensitiveResponse);
+            const serialized = toJsonAttr(redacted);
+            if (serialized) span.setAttribute('http.response.body', serialized);
+          }
+        } catch {
+          // ignore body read errors
+        }
+      }
+
       if (response.ok) {
         span.setStatus('OK');
       } else {
