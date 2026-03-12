@@ -167,7 +167,11 @@ export function createFetchInstrumentation(
       },
     });
 
-    if (captureRequestBody && effectiveInit?.body !== undefined && effectiveInit.body !== null) {
+    if (
+      captureRequestBody &&
+      effectiveInit?.body !== undefined &&
+      effectiveInit.body !== null
+    ) {
       const normalized = normalizeBody(effectiveInit.body);
       if (normalized) {
         const redacted = redactObject(normalized, sensitiveBody);
@@ -181,7 +185,8 @@ export function createFetchInstrumentation(
       const existingHeaders =
         effectiveInit?.headers instanceof Headers
           ? Object.fromEntries((effectiveInit.headers as Headers).entries())
-          : (effectiveInit?.headers as Record<string, string> | undefined) ?? {};
+          : (effectiveInit?.headers as Record<string, string> | undefined) ??
+            {};
 
       patchedInit = {
         ...effectiveInit,
