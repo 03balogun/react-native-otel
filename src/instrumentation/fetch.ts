@@ -9,19 +9,12 @@ import { Span, NoopSpan } from '../core/span';
 import { Tracer } from '../core/tracer';
 
 export interface FetchInstrumentationOptions {
-  // URL substrings to skip (e.g. your own OTLP endpoint to avoid recursion).
   ignoreUrls?: string[];
-  // Attribute keys to redact from request/response (same dot-notation as Axios).
-  // Sections: body.{key}, response.{key}
-  // Example: ['body.password', 'response.token']
+  // Dot-notation paths to redact. Sections: body.{key}, response.{key}
   sensitiveKeys?: string[];
-  // Capture the request body as http.request.body span attribute. Default: false.
   captureRequestBody?: boolean;
-  // Capture the response body as http.response.body span attribute. Default: false.
   captureResponseBody?: boolean;
 }
-
-// ─── Body capture helpers ─────────────────────────────────────────────────────
 
 function leafKeysForSection(section: string, paths: string[]): Set<string> {
   const prefix = `${section}.`;
@@ -62,7 +55,7 @@ function normalizeBody(data: unknown): Record<string, unknown> | undefined {
         return parsed as Record<string, unknown>;
       }
     } catch {
-      // not JSON — skip
+      // not JSON
     }
   }
   return undefined;
@@ -76,20 +69,11 @@ function toJsonAttr(obj: Record<string, unknown>): string | undefined {
   }
 }
 
-// Map from internal ID → active span, mirroring the Axios instrumentation pattern.
 const activeFetchSpans = new Map<string, Span | NoopSpan>();
 
 let originalFetch: typeof fetch | undefined;
 let installed = false;
 
-/**
- * Patches globalThis.fetch to create OTel spans for every HTTP request.
- * Call `uninstallFetchInstrumentation()` to restore the original fetch.
- *
- * Options:
- *   ignoreUrls – URL substrings that should not be instrumented (e.g. your
- *                OTLP endpoint to prevent infinite recursion).
- */
 export function createFetchInstrumentation(
   tracer: Tracer,
   options?: FetchInstrumentationOptions
@@ -119,19 +103,55 @@ export function createFetchInstrumentation(
         ? input.toString()
         : (input as Request).url;
 
-    // Skip ignored URLs.
     if (ignoreUrls.some((pattern) => url.includes(pattern))) {
       return originalFetch!(input, init);
     }
 
-    const method = (
-      init?.method ??
-      (typeof input !== 'string' && !(input instanceof URL)
-        ? (input as Request).method
-        : 'GET')
-    ).toUpperCase();
+    // When the caller passes a Request object without a separate init, decompose
+    // it into (url, effectiveInit) so the traceparent header can be merged safely.
+    // Per the Fetch spec, fetch(request, init) causes init to override all request
+    // properties — so passing even a partial init drops headers, body, credentials.
+    // Binary/multipart bodies are passed through unchanged to avoid data corruption.
+    let effectiveInit: RequestInit | undefined = init;
+    let passThroughRequest = false;
 
-    // Capture parent context NOW by value — concurrent-safe.
+    if (!init && typeof input !== 'string' && !(input instanceof URL)) {
+      const req = input as Request;
+      const reqHeaders = Object.fromEntries(req.headers.entries());
+      const contentType = (reqHeaders['content-type'] ?? '').toLowerCase();
+      const isTextBody =
+        contentType === '' ||
+        contentType.includes('application/json') ||
+        contentType.includes('text/');
+
+      if (isTextBody) {
+        let reqBody: string | undefined;
+        try {
+          const text = await req.clone().text();
+          if (text) reqBody = text;
+        } catch {
+          // body not readable
+        }
+        effectiveInit = {
+          method: req.method,
+          headers: reqHeaders,
+          body: reqBody,
+          signal: req.signal,
+          redirect: req.redirect,
+          referrer: req.referrer,
+          credentials: req.credentials,
+          cache: req.cache,
+          mode: req.mode,
+          integrity: req.integrity,
+          keepalive: req.keepalive,
+        };
+      } else {
+        passThroughRequest = true;
+      }
+    }
+
+    const method = (effectiveInit?.method ?? 'GET').toUpperCase();
+
     const currentSpan = spanContext.current();
     const parent =
       currentSpan?.traceId && currentSpan?.spanId
@@ -147,9 +167,8 @@ export function createFetchInstrumentation(
       },
     });
 
-    // Capture request body (string / JSON only — Blob/FormData are skipped).
-    if (captureRequestBody && init?.body !== undefined && init.body !== null) {
-      const normalized = normalizeBody(init.body);
+    if (captureRequestBody && effectiveInit?.body !== undefined && effectiveInit.body !== null) {
+      const normalized = normalizeBody(effectiveInit.body);
       if (normalized) {
         const redacted = redactObject(normalized, sensitiveBody);
         const serialized = toJsonAttr(redacted);
@@ -157,16 +176,15 @@ export function createFetchInstrumentation(
       }
     }
 
-    // Inject W3C traceparent header for sampled spans.
-    let patchedInit = init;
-    if (span instanceof Span) {
+    let patchedInit = effectiveInit;
+    if (!passThroughRequest && span instanceof Span) {
       const existingHeaders =
-        init?.headers instanceof Headers
-          ? Object.fromEntries((init.headers as Headers).entries())
-          : (init?.headers as Record<string, string> | undefined) ?? {};
+        effectiveInit?.headers instanceof Headers
+          ? Object.fromEntries((effectiveInit.headers as Headers).entries())
+          : (effectiveInit?.headers as Record<string, string> | undefined) ?? {};
 
       patchedInit = {
-        ...init,
+        ...effectiveInit,
         headers: {
           ...existingHeaders,
           traceparent: `00-${span.traceId}-${span.spanId}-01`,
@@ -178,10 +196,11 @@ export function createFetchInstrumentation(
     activeFetchSpans.set(otelId, span);
 
     try {
-      const response = await originalFetch!(input, patchedInit);
+      const response = await (passThroughRequest
+        ? originalFetch!(input)
+        : originalFetch!(url, patchedInit));
       span.setAttribute(ATTR_HTTP_RESPONSE_STATUS_CODE, response.status);
 
-      // Capture response body — clone so the caller's stream is unaffected.
       if (captureResponseBody) {
         try {
           const text = await response.clone().text();
@@ -192,7 +211,7 @@ export function createFetchInstrumentation(
             if (serialized) span.setAttribute('http.response.body', serialized);
           }
         } catch {
-          // ignore body read errors
+          // ignore
         }
       }
 
