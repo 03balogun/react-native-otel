@@ -196,13 +196,13 @@ export class OtlpHttpExporter implements SpanExporter {
       kind: SPAN_KIND[span.kind] ?? 1,
       startTimeUnixNano: msToNano(span.startTimeMs),
       endTimeUnixNano: msToNano(span.endTimeMs ?? span.startTimeMs),
-      attributes: toOtlpAttributes(span.attributes as Attributes),
-      events: span.events.map((event) => ({
+      attributes: toOtlpAttributes((span.attributes ?? {}) as Attributes),
+      events: (span.events ?? []).map((event) => ({
         name: event.name,
         timeUnixNano: msToNano(event.timestampMs),
         attributes: toOtlpAttributes(event.attributes),
       })),
-      links: span.links.map((link) => ({
+      links: (span.links ?? []).map((link) => ({
         traceId: link.traceId,
         spanId: link.spanId,
         attributes: link.attributes ? toOtlpAttributes(link.attributes) : [],

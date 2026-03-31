@@ -330,6 +330,39 @@ describe('OTLP snapshot tests', () => {
     expect(body).toMatchSnapshot();
   });
 
+  it('toOtlpSpan handles span with missing events, links, and attributes', async () => {
+    const spanExporter = new OtlpHttpExporter({
+      endpoint: 'http://localhost:4318',
+    });
+    // Simulate a span object where optional array fields are undefined,
+    // e.g. after JSON deserialization from WAL or external construction.
+    spanExporter.export([
+      {
+        traceId: 'aabbccdd11223344aabbccdd11223344',
+        spanId: '1122334455667788',
+        parentSpanId: undefined,
+        name: 'minimal.span',
+        kind: 'INTERNAL',
+        startTimeMs: 1_000_000,
+        endTimeMs: 1_001_000,
+        droppedEventsCount: 0,
+        status: 'OK',
+        statusMessage: undefined,
+        // events, links, and attributes are intentionally omitted
+      } as any,
+    ]);
+    spanExporter.flush();
+    await Promise.resolve();
+
+    expect(fetchCalls).toHaveLength(1);
+    const body = JSON.parse(fetchCalls[0]!.body);
+    const span = body.resourceSpans[0].scopeSpans[0].spans[0];
+    expect(span.name).toBe('minimal.span');
+    expect(span.attributes).toEqual([]);
+    expect(span.events).toEqual([]);
+    expect(span.links).toEqual([]);
+  });
+
   it('log OTLP body matches snapshot', async () => {
     const logExporter = new OtlpHttpLogExporter({
       endpoint: 'http://localhost:4318',
