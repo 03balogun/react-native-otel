@@ -348,11 +348,14 @@ Body capture details:
 
 #### W3C trace propagation
 
-A `traceparent` header is injected automatically on every sampled request:
+A `traceparent` header is injected automatically on every request, and its sampled flag mirrors the sampling decision:
 
 ```
-traceparent: 00-{traceId}-{spanId}-01
+traceparent: 00-{traceId}-{spanId}-01   # request was sampled
+traceparent: 00-{traceId}-{spanId}-00   # request was dropped by the sampler
 ```
+
+For a dropped request the trace id is inherited from the active span when there is one (otherwise a new one is generated), so the receiving service can still correlate its logs, and a `ParentBased` sampler on the server honours the client's decision instead of starting an unrelated trace.
 
 #### Opt out
 

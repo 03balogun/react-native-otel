@@ -4,7 +4,7 @@ import {
 } from '@opentelemetry/semantic-conventions';
 
 import { spanContext } from '../context/span-context';
-import { generateSpanId } from '../core/ids';
+import { generateSpanId, generateTraceId } from '../core/ids';
 import { Span, NoopSpan } from '../core/span';
 import { Tracer } from '../core/tracer';
 
@@ -181,18 +181,29 @@ export function createFetchInstrumentation(
     }
 
     let patchedInit = effectiveInit;
-    if (!passThroughRequest && span instanceof Span) {
+    if (!passThroughRequest) {
       const existingHeaders =
         effectiveInit?.headers instanceof Headers
           ? Object.fromEntries((effectiveInit.headers as Headers).entries())
           : (effectiveInit?.headers as Record<string, string> | undefined) ??
             {};
 
+      // W3C Trace Context: the sampled flag mirrors the real sampling decision.
+      // A span dropped by the sampler (NoopSpan, empty ids) still propagates a
+      // valid context with flags `00`, so the receiver keeps the same trace id
+      // for log correlation and a ParentBased sampler honours the client's
+      // decision instead of starting an unrelated trace.
+      const sampled = span instanceof Span;
+      const traceId = sampled
+        ? span.traceId
+        : parent?.traceId ?? generateTraceId();
+      const spanId = sampled ? span.spanId : generateSpanId();
+
       patchedInit = {
         ...effectiveInit,
         headers: {
           ...existingHeaders,
-          traceparent: `00-${span.traceId}-${span.spanId}-01`,
+          traceparent: `00-${traceId}-${spanId}-${sampled ? '01' : '00'}`,
         },
       };
     }
