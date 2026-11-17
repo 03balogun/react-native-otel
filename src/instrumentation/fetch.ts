@@ -10,6 +10,13 @@ import { Tracer } from '../core/tracer';
 
 export interface FetchInstrumentationOptions {
   ignoreUrls?: string[];
+  // Allow-list of URL substrings to instrument. When non-empty, a request whose
+  // URL matches none of the entries is passed through untouched: no span is
+  // created and no trace context is injected. `ignoreUrls` still takes
+  // precedence. Use it to keep trace context inside your own domains: sending
+  // `traceparent` to third parties exposes trace ids and can trigger needless
+  // CORS preflights.
+  instrumentUrls?: string[];
   // Dot-notation paths to redact. Sections: body.{key}, response.{key}
   sensitiveKeys?: string[];
   captureRequestBody?: boolean;
@@ -83,6 +90,7 @@ export function createFetchInstrumentation(
   }
 
   const ignoreUrls = options?.ignoreUrls ?? [];
+  const instrumentUrls = options?.instrumentUrls ?? [];
   const paths = (options?.sensitiveKeys ?? []).map((k) => k.toLowerCase());
   const sensitiveBody = leafKeysForSection('body', paths);
   const sensitiveResponse = leafKeysForSection('response', paths);
@@ -104,6 +112,13 @@ export function createFetchInstrumentation(
         : (input as Request).url;
 
     if (ignoreUrls.some((pattern) => url.includes(pattern))) {
+      return originalFetch!(input, init);
+    }
+
+    if (
+      instrumentUrls.length > 0 &&
+      !instrumentUrls.some((pattern) => url.includes(pattern))
+    ) {
       return originalFetch!(input, init);
     }
 
