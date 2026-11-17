@@ -14,6 +14,37 @@ export interface FetchInstrumentationOptions {
   sensitiveKeys?: string[];
   captureRequestBody?: boolean;
   captureResponseBody?: boolean;
+  // Abort an instrumented request that has not received a response after this
+  // many milliseconds. Without a deadline, a request on a hung connection never
+  // settles, so its span is never ended and never exported: the requests you
+  // most need to see are invisible. When the deadline fires the request rejects
+  // and the span ends with an error status. Combined with any `signal` the
+  // caller passed (whichever aborts first wins). Disabled by default; ignored
+  // when not a positive number.
+  requestTimeoutMs?: number;
+}
+
+function withDeadline(
+  signal: AbortSignal | null | undefined,
+  timeoutMs: number
+): { signal: AbortSignal; clear: () => void } {
+  const controller = new AbortController();
+  const abort = () => controller.abort();
+  const timer = setTimeout(abort, timeoutMs);
+  if (signal) {
+    if (signal.aborted) {
+      abort();
+    } else {
+      signal.addEventListener('abort', abort);
+    }
+  }
+  return {
+    signal: controller.signal,
+    clear: () => {
+      clearTimeout(timer);
+      signal?.removeEventListener('abort', abort);
+    },
+  };
 }
 
 function leafKeysForSection(section: string, paths: string[]): Set<string> {
@@ -88,6 +119,11 @@ export function createFetchInstrumentation(
   const sensitiveResponse = leafKeysForSection('response', paths);
   const captureRequestBody = options?.captureRequestBody ?? false;
   const captureResponseBody = options?.captureResponseBody ?? false;
+  const requestTimeoutMs =
+    typeof options?.requestTimeoutMs === 'number' &&
+    options.requestTimeoutMs > 0
+      ? options.requestTimeoutMs
+      : undefined;
 
   originalFetch = globalThis.fetch;
   installed = true;
@@ -197,6 +233,15 @@ export function createFetchInstrumentation(
       };
     }
 
+    // Not applied to pass-through requests: they are sent as-is, without init.
+    const deadline =
+      requestTimeoutMs !== undefined && !passThroughRequest
+        ? withDeadline(patchedInit?.signal, requestTimeoutMs)
+        : undefined;
+    if (deadline) {
+      patchedInit = { ...patchedInit, signal: deadline.signal };
+    }
+
     const otelId = generateSpanId();
     activeFetchSpans.set(otelId, span);
 
@@ -204,6 +249,7 @@ export function createFetchInstrumentation(
       const response = await (passThroughRequest
         ? originalFetch!(input)
         : originalFetch!(url, patchedInit));
+      deadline?.clear();
       span.setAttribute(ATTR_HTTP_RESPONSE_STATUS_CODE, response.status);
 
       if (captureResponseBody) {
@@ -229,6 +275,7 @@ export function createFetchInstrumentation(
       activeFetchSpans.delete(otelId);
       return response;
     } catch (err) {
+      deadline?.clear();
       span.recordException(err as Error);
       span.setStatus('ERROR', (err as Error).message);
       span.end();

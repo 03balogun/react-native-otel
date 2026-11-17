@@ -346,6 +346,23 @@ Body capture details:
 - **Response body** — the response is cloned before reading so the caller's stream is unaffected. Only JSON responses are captured; non-JSON text is skipped.
 - Both options are `false` by default. Enabling them adds a small overhead per request (a response clone + text read for `captureResponseBody`).
 
+#### Request timeout
+
+A request on a hung connection never settles, so its span is never ended and never exported: the requests you most need to see are the ones missing from your backend. Set `requestTimeoutMs` to bound them:
+
+```ts
+otel.init({
+  serviceName: 'my-app',
+  exporter,
+  fetchOptions: { requestTimeoutMs: 30_000 },
+});
+```
+
+- The request is aborted if no response has been received after `requestTimeoutMs`. It rejects (with an `AbortError`) and its span ends with an `ERROR` status.
+- If the caller also passes a `signal`, the request is aborted by whichever fires first.
+- Off by default, so `fetch` behaves exactly as before unless you opt in.
+- Requests passed as a `Request` object with a non-text body are sent untouched and are not bounded.
+
 #### W3C trace propagation
 
 A `traceparent` header is injected automatically on every sampled request:
