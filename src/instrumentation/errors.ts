@@ -5,6 +5,7 @@ import {
 } from '@opentelemetry/semantic-conventions';
 
 import { Span } from '../core/span';
+import type { SpanKind, SpanLink, SpanStatus } from '../core/span';
 import { Tracer } from '../core/tracer';
 import type { ReadonlySpan } from '../exporters/types';
 
@@ -83,11 +84,17 @@ export interface StorageAdapter {
 
 type GlobalErrorHandler = (error: Error, isFatal?: boolean) => void;
 
-// Serialized crash span shape for storage
+// Serialized crash span shape for storage. Mirrors the full span shape so the
+// span replayed on the next launch is identical to the one recorded at crash
+// time, including its place in the trace tree. Records written by earlier
+// versions lack `kind`, `links`, `droppedEventsCount` and `parentSpanId`; the
+// exporter tolerates their absence.
 interface CrashSpanRecord {
   traceId: string;
   spanId: string;
+  parentSpanId?: string;
   name: string;
+  kind: SpanKind;
   startTimeMs: number;
   endTimeMs: number;
   attributes: Record<string, unknown>;
@@ -96,7 +103,9 @@ interface CrashSpanRecord {
     timestampMs: number;
     attributes: Record<string, unknown>;
   }[];
-  status: string;
+  links: SpanLink[];
+  droppedEventsCount: number;
+  status: SpanStatus;
   statusMessage: string | undefined;
 }
 
@@ -147,11 +156,15 @@ export function installErrorInstrumentation(params: {
         const record: CrashSpanRecord = {
           traceId: span.traceId,
           spanId: span.spanId,
+          ...(span.parentSpanId ? { parentSpanId: span.parentSpanId } : {}),
           name: span.name,
+          kind: span.kind,
           startTimeMs: span.startTimeMs,
           endTimeMs: span.endTimeMs ?? Date.now(),
           attributes: span.attributes as Record<string, unknown>,
           events: span.events,
+          links: span.links,
+          droppedEventsCount: span.droppedEventsCount,
           status: span.status,
           statusMessage: span.statusMessage,
         };
