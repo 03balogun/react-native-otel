@@ -322,6 +322,24 @@ The following W3C headers are injected automatically on every sampled request:
 
 The OTLP exporter's own delivery calls are immune — the SDK snapshots the original `fetch` before installing the instrumentation, so there is no infinite recursion.
 
+#### Limiting instrumentation to your own APIs
+
+By default every `fetch` call is instrumented, including calls to third-party services (maps, CDNs, payment providers, ...). Those requests get a span and receive your `traceparent` header, which exposes your trace ids to services that cannot use them and can add a CORS preflight to calls you do not observe anyway.
+
+`ignoreUrls` is a deny-list, so it cannot express "everything except my API". Use `instrumentUrls` for that:
+
+```ts
+otel.init({
+  serviceName: 'my-app',
+  exporter,
+  fetchOptions: { instrumentUrls: ['api.myapp.com'] },
+});
+```
+
+- Matching is a substring test against the request URL, like `ignoreUrls`.
+- When `instrumentUrls` is empty or omitted, every request is instrumented (the previous behaviour).
+- `ignoreUrls` keeps precedence: a URL matching both is not instrumented.
+
 #### Capturing request and response bodies
 
 Pass `fetchOptions` to `otel.init()` to enable body capture:
@@ -337,6 +355,9 @@ otel.init({
     sensitiveKeys: ['body.password', 'body.cardNumber', 'response.token'],
     // Skip instrumentation entirely for these URL substrings:
     ignoreUrls: ['analytics.internal.com'],
+    // Or the opposite: only instrument URLs containing one of these substrings.
+    // Everything else is passed through untouched (no span, no traceparent).
+    instrumentUrls: ['api.myapp.com'],
   },
 });
 ```
